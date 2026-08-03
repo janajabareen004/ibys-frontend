@@ -81,8 +81,11 @@ type ProgressRow = {
 };
 
 type ImageRow = {
-  image_id: string;
+  image_id: string | number;
   image_path: string | null;
+  image_url?: string | null;
+  title?: string | null;
+  stage?: string | null;
   upload_date: string | null;
   project_id: string | null;
 };
@@ -310,13 +313,11 @@ function mapStages(rows: ProgressRow[]): Stage[] {
 
 function mapPhoto(row: ImageRow): Photo {
   return {
-    // Images are not stage-scoped on the backend; stageId is intentionally blank
-    // so the "all" filter shows them and per-stage filters simply match nothing.
-    id: row.image_id,
-    stageId: "" as StageId,
-    title: row.image_path ? (row.image_path.split("/").pop() ?? row.image_path) : "Photo",
-    url: row.image_path ?? "",
-    uploadedAt: safeDate(row.upload_date),
+    id: String(row.image_id),
+    stageId: (row.stage ?? "") as StageId,
+    title: row.title ?? "Project photo",
+    url: row.image_url ?? row.image_path ?? "",
+    uploadedAt: row.upload_date ?? "",
     uploadedBy: "",
   };
 }
