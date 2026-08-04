@@ -139,6 +139,23 @@ const CANONICAL_STAGES: StageId[] = [
   "handover",
 ];
 
+// Construction stages must always render in this real-world sequence, regardless
+// of the (arbitrary) order the backend returns progress rows in. Matching is done
+// on the backend task_name, case-insensitively. Unknown names sort to the end.
+const TIMELINE_STAGE_ORDER: string[] = [
+  "site preparation",
+  "foundation",
+  "structure construction",
+  "electrical installation",
+  "interior finishing",
+];
+
+function stageOrderRank(taskName: string | null | undefined): number {
+  const name = (taskName ?? "").trim().toLowerCase();
+  const index = TIMELINE_STAGE_ORDER.indexOf(name);
+  return index === -1 ? TIMELINE_STAGE_ORDER.length : index;
+}
+
 /** Return a guaranteed-valid ISO date string; `formatDate` throws on invalid input. */
 function safeDate(value: string | null | undefined): string {
   if (typeof value === "string" && value) {
@@ -284,10 +301,15 @@ function mapProject(
 }
 
 function mapStages(rows: ProgressRow[]): Stage[] {
-  // Order backend tasks by start date, then assign each to a canonical stage id
-  // by index so the timeline/detail routes (which only accept the fixed 6 ids)
+  // Order backend tasks by the fixed construction sequence (by task_name), falling
+  // back to start date for any unknown names, then assign each to a canonical stage
+  // id by index so the timeline/detail routes (which only accept the fixed 6 ids)
   // keep working. Backend supplies at most 6 usable stages this way.
-  const ordered = [...rows].sort((a, b) => safeDate(a.start_date).localeCompare(safeDate(b.start_date)));
+  const ordered = [...rows].sort((a, b) => {
+    const rankDiff = stageOrderRank(a.task_name) - stageOrderRank(b.task_name);
+    if (rankDiff !== 0) return rankDiff;
+    return safeDate(a.start_date).localeCompare(safeDate(b.start_date));
+  });
 
   return ordered.slice(0, CANONICAL_STAGES.length).map((row, index) => {
     const status = mapStageStatus(row.status);
