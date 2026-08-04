@@ -156,6 +156,11 @@ function stageOrderRank(taskName: string | null | undefined): number {
   return index === -1 ? TIMELINE_STAGE_ORDER.length : index;
 }
 
+/** Normalize a stage/task name for matching: trimmed, lower-cased, null-safe. */
+function normalizeStageName(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
 /** Return a guaranteed-valid ISO date string; `formatDate` throws on invalid input. */
 function safeDate(value: string | null | undefined): string {
   if (typeof value === "string" && value) {
@@ -300,7 +305,7 @@ function mapProject(
   };
 }
 
-function mapStages(rows: ProgressRow[]): Stage[] {
+function mapStages(rows: ProgressRow[], images: ImageRow[] = []): Stage[] {
   // Order backend tasks by the fixed construction sequence (by task_name), falling
   // back to start date for any unknown names, then assign each to a canonical stage
   // id by index so the timeline/detail routes (which only accept the fixed 6 ids)
@@ -314,6 +319,12 @@ function mapStages(rows: ProgressRow[]): Stage[] {
   return ordered.slice(0, CANONICAL_STAGES.length).map((row, index) => {
     const status = mapStageStatus(row.status);
     const estimatedDate = safeDate(row.end_date ?? row.start_date);
+    // Count project images whose `stage` matches this progress row's task_name
+    // (case-insensitive, trimmed, null-safe). A blank task_name counts nothing.
+    const stageName = normalizeStageName(row.task_name);
+    const photosCount = stageName
+      ? images.filter((img) => normalizeStageName(img.stage) === stageName).length
+      : 0;
     return {
       id: CANONICAL_STAGES[index],
       order: index + 1,
@@ -324,7 +335,7 @@ function mapStages(rows: ProgressRow[]): Stage[] {
       description: "",
       estimatedDate,
       completionDate: status === "completed" ? safeDate(row.end_date) : undefined,
-      photosCount: 0,
+      photosCount,
       documentsCount: 0,
       commentsCount: 0,
       responsibleCompany: "",
@@ -427,8 +438,16 @@ export const tenantApi = {
     const ctx = await loadTenantContext();
     if (!ctx.projectId) return [];
     try {
-      const res = await apiClient.get<ProgressRow[]>(`/projects/${ctx.projectId}/progress`);
-      return mapStages(Array.isArray(res) ? res : []);
+      // Fetch progress and images once, then reuse images for every stage's count.
+      const [progressRes, imagesRes] = await Promise.all([
+        apiClient.get<ProgressRow[]>(`/projects/${ctx.projectId}/progress`),
+        apiClient
+          .get<ImageRow[]>(`/projects/${ctx.projectId}/images`)
+          .catch(() => [] as ImageRow[]),
+      ]);
+      const progressRows = Array.isArray(progressRes) ? progressRes : [];
+      const images = Array.isArray(imagesRes) ? imagesRes : [];
+      return mapStages(progressRows, images);
     } catch {
       return [];
     }
