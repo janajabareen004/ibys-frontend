@@ -12,7 +12,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTenantPhotos, useTenantStages } from "@/hooks/useTenantData";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import type { Photo, StageId } from "@/mocks/mockTenantService";
+import type { Photo } from "@/mocks/mockTenantService";
 
 export const Route = createFileRoute("/_authenticated/tenant/photos")({
   head: () => ({
@@ -29,14 +29,28 @@ function Page() {
   const { data: photos } = useTenantPhotos();
   const { data: stages } = useTenantStages();
   const [query, setQuery] = React.useState("");
-  const [stage, setStage] = React.useState<StageId | "all">("all");
+  // Selected stage is tracked by the stage id ("all" = show every photo).
+  const [stage, setStage] = React.useState<string>("all");
   const [preview, setPreview] = React.useState<Photo | null>(null);
 
-  const filtered = (photos ?? []).filter(
-    (p) =>
-      (stage === "all" || p.stageId === stage) &&
-      (query === "" || p.title.toLowerCase().includes(query.toLowerCase())),
-  );
+  const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+
+  // A photo's `stageId` carries the backend image `stage` value, which may be
+  // either the canonical stage id or the stage's display name. Match against both
+  // so filtering works regardless of which representation the backend sends.
+  const selectedStage = stage === "all" ? null : (stages?.find((s) => s.id === stage) ?? null);
+
+  const filtered = (photos ?? []).filter((p) => {
+    const photoStage = normalize(p.stageId);
+    const stageOk =
+      stage === "all" ||
+      (selectedStage
+        ? photoStage === normalize(selectedStage.id) ||
+          photoStage === normalize(selectedStage.nameKey)
+        : photoStage === normalize(stage));
+    const searchOk = query === "" || p.title.toLowerCase().includes(query.toLowerCase());
+    return stageOk && searchOk;
+  });
 
   return (
     <RoleGuard allow="TENANT">
