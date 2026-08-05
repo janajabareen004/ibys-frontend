@@ -65,6 +65,7 @@ export type Doc = {
   category: "contract" | "permit" | "drawing" | "report" | "invoice";
   updatedAt: string;
   size: string;
+  url?: string;
 };
 
 export type Comment = {

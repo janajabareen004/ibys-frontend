@@ -296,6 +296,7 @@ const en = {
       date: "Updated",
       size: "Size",
       download: "Download",
+      downloadUnavailable: "This document has no downloadable file.",
       all: "All categories",
       categories: {
         contract: "Contract",

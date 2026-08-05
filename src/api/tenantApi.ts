@@ -95,6 +95,7 @@ type DocumentRow = {
   file_name: string | null;
   upload_date: string | null;
   project_id: string | null;
+  file_url: string | null;
 };
 
 type MeetingRow = {
@@ -363,6 +364,7 @@ function mapDoc(row: DocumentRow): Doc {
     category: "report",
     updatedAt: safeDate(row.upload_date),
     size: "",
+    url: row.file_url ?? "",
   };
 }
 

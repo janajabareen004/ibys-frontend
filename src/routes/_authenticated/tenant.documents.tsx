@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTenantDocuments } from "@/hooks/useTenantData";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
+import { notifyError } from "@/components/feedback/SuccessNotification";
 import type { Doc } from "@/mocks/mockTenantService";
 
 const CATEGORIES: Array<Doc["category"] | "all"> = ["all", "contract", "permit", "drawing", "report", "invoice"];
@@ -36,6 +37,14 @@ function Page() {
       (cat === "all" || d.category === cat) &&
       (query === "" || d.name.toLowerCase().includes(query.toLowerCase())),
   );
+
+  const handleDownload = (doc: Doc) => {
+    if (doc.url) {
+      window.open(doc.url, "_blank", "noopener,noreferrer");
+    } else {
+      notifyError(t("tenant.documents.downloadUnavailable"));
+    }
+  };
 
   return (
     <RoleGuard allow="TENANT">
@@ -96,7 +105,7 @@ function Page() {
                   <div className="hidden text-sm text-muted-foreground md:block">{formatDate(d.updatedAt)}</div>
                   <div className="hidden text-sm text-muted-foreground md:block">{d.size}</div>
                   <div className="text-end">
-                    <Button size="sm" variant="outline"><Download className="h-3.5 w-3.5" />{t("tenant.documents.download")}</Button>
+                    <Button size="sm" variant="outline" onClick={() => handleDownload(d)}><Download className="h-3.5 w-3.5" />{t("tenant.documents.download")}</Button>
                   </div>
                 </li>
               ))}

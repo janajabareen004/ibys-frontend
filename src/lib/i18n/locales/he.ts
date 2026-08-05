@@ -296,6 +296,7 @@ const he: Dictionary = {
       date: "עודכן",
       size: "גודל",
       download: "הורדה",
+      downloadUnavailable: "למסמך זה אין קובץ להורדה.",
       all: "כל הקטגוריות",
       categories: {
         contract: "חוזה",

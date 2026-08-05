@@ -296,6 +296,7 @@ const ar: Dictionary = {
       date: "آخر تحديث",
       size: "الحجم",
       download: "تنزيل",
+      downloadUnavailable: "لا يوجد ملف قابل للتنزيل لهذا المستند.",
       all: "كل التصنيفات",
       categories: {
         contract: "عقد",
