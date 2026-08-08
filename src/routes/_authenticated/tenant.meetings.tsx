@@ -77,8 +77,14 @@ function Page() {
                       <StatusChip status={m.status} />
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />{m.location}</span>
-                      <span>· {t("tenant.meetings.duration", { n: m.durationMin })}</span>
+                      {m.location && (
+                        <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />{m.location}</span>
+                      )}
+                      <span className="inline-flex items-center gap-1.5">
+                        {m.location && <span aria-hidden>·</span>}
+                        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        {t("tenant.meetings.duration", { n: m.durationMin })}
+                      </span>
                     </div>
                     <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
                       <Users className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
