@@ -129,7 +129,7 @@ function Page() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             {stage && <Badge variant="outline">{t(stage.nameKey)}</Badge>}
-                            <Badge variant="secondary">{t(`tenant.requests.priorities.${r.priority}`)}</Badge>
+                            <PriorityBadge priority={r.priority} />
                           </div>
                           <p className="mt-2 text-sm">{r.description}</p>
                           <div className="mt-1 text-xs text-muted-foreground">
@@ -148,6 +148,15 @@ function Page() {
       </div>
     </RoleGuard>
   );
+}
+
+function PriorityBadge({ priority }: { priority: PhotoRequest["priority"] }) {
+  const { t } = useI18n();
+  const cls =
+    priority === "low" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : priority === "high" ? "border-red-200 bg-red-50 text-red-700"
+    : "border-blue-200 bg-blue-50 text-blue-700";
+  return <Badge variant="outline" className={cls}>{t(`tenant.requests.priorities.${priority}`)}</Badge>;
 }
 
 function StatusPill({ status }: { status: PhotoRequest["status"] }) {

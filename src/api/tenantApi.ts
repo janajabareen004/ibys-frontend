@@ -126,6 +126,7 @@ type RequestRow = {
   description: string | null;
   status: string | null;
   tenant_id: string | null;
+  priority: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -402,13 +403,19 @@ function mapComment(row: CommentRow, tenantId: string | null): Comment {
   };
 }
 
+function mapPriority(value: string | null | undefined): PhotoRequest["priority"] {
+  const v = (value ?? "").trim().toLowerCase();
+  if (v === "low" || v === "medium" || v === "high") return v;
+  return "medium";
+}
+
 function mapRequest(row: RequestRow): PhotoRequest {
   return {
     id: row.request_id,
-    // Backend requests have no stage or priority columns.
+    // Backend requests have no stage column.
     stageId: "" as StageId,
     description: row.description ?? "",
-    priority: "medium",
+    priority: mapPriority(row.priority),
     status: mapRequestStatus(row.status),
     createdAt: safeDate(row.request_date),
   };
@@ -523,10 +530,11 @@ export const tenantApi = {
   createRequest: async (
     input: Omit<PhotoRequest, "id" | "status" | "createdAt">,
   ): Promise<PhotoRequest> => {
-    // Backend accepts only { description, status }; tenant_id comes from the
-    // token. stageId and priority have no backend columns and are dropped.
+    // tenant_id comes from the token. stageId has no backend column and is
+    // dropped; priority is sent through to the backend `priority` column.
     const row = await apiClient.post<RequestRow>("/requests", {
       description: input.description,
+      priority: input.priority ?? "medium",
       status: "pending",
     });
     return mapRequest(row);
