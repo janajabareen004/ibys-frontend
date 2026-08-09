@@ -129,6 +129,20 @@ type RequestRow = {
   priority: string | null;
 };
 
+type NotificationRow = {
+  notification_id?: string | number | null;
+  id?: string | number | null;
+  title?: string | null;
+  body?: string | null;
+  message?: string | null;
+  category?: string | null;
+  type?: string | null;
+  is_read?: boolean | null;
+  read?: boolean | null;
+  created_at?: string | null;
+  tenant_id?: string | null;
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -409,6 +423,23 @@ function mapPriority(value: string | null | undefined): PhotoRequest["priority"]
   return "medium";
 }
 
+function mapNotificationCategory(value: string | null | undefined): Notification["category"] {
+  const c = (value ?? "").trim().toLowerCase();
+  const valid: Notification["category"][] = ["project", "meeting", "documents", "construction", "system"];
+  return (valid as string[]).includes(c) ? (c as Notification["category"]) : "system";
+}
+
+function mapNotification(row: NotificationRow): Notification {
+  return {
+    id: String(row.notification_id ?? row.id ?? ""),
+    category: mapNotificationCategory(row.category ?? row.type),
+    title: row.title ?? "",
+    body: row.body ?? row.message ?? "",
+    createdAt: safeDate(row.created_at),
+    read: row.is_read ?? row.read ?? false,
+  };
+}
+
 function mapRequest(row: RequestRow): PhotoRequest {
   return {
     id: row.request_id,
@@ -513,9 +544,13 @@ export const tenantApi = {
     }
   },
 
-  // The backend exposes no notifications endpoint; return empty (never mock).
   getNotifications: async (): Promise<Notification[]> => {
-    return [];
+    try {
+      const res = await apiClient.get<NotificationRow[]>("/notifications");
+      return (Array.isArray(res) ? res : []).map(mapNotification);
+    } catch {
+      return [];
+    }
   },
 
   getRequests: async (): Promise<PhotoRequest[]> => {
