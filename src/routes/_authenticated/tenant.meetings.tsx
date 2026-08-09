@@ -10,6 +10,7 @@ import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useTenantMeetings } from "@/hooks/useTenantData";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
 import { EmptyState } from "@/components/feedback/EmptyState";
+import { notifyError } from "@/components/feedback/SuccessNotification";
 import type { Meeting } from "@/mocks/mockTenantService";
 
 export const Route = createFileRoute("/_authenticated/tenant/meetings")({
@@ -30,6 +31,14 @@ function Page() {
   const [tab, setTab] = React.useState<Meeting["status"]>("upcoming");
 
   const list = (data ?? []).filter((m) => m.status === tab);
+
+  const handleJoin = (meeting: Meeting) => {
+    if (meeting.meetingLink) {
+      window.open(meeting.meetingLink, "_blank", "noopener,noreferrer");
+    } else {
+      notifyError(t("tenant.meetings.linkUnavailable"));
+    }
+  };
 
   return (
     <RoleGuard allow="TENANT">
@@ -94,7 +103,7 @@ function Page() {
                     <div className="text-[11px] text-muted-foreground">{formatDate(m.when, { dateStyle: "full", timeStyle: "short" })}</div>
                     {m.status === "upcoming" && (
                       <div className="pt-1">
-                        <Button size="sm"><Video className="h-3.5 w-3.5" />{t("tenant.meetings.join")}</Button>
+                        <Button size="sm" onClick={() => handleJoin(m)}><Video className="h-3.5 w-3.5" />{t("tenant.meetings.join")}</Button>
                       </div>
                     )}
                   </div>

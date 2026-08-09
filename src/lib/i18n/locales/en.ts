@@ -344,6 +344,7 @@ const en = {
       notes: "Notes",
       join: "Join meeting",
       duration: "{n} min",
+      linkUnavailable: "Meeting link is not available yet.",
     },
     notifications: {
       all: "All",

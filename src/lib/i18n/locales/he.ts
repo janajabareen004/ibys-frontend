@@ -344,6 +344,7 @@ const he: Dictionary = {
       notes: "הערות",
       join: "הצטרף לפגישה",
       duration: "{n} דקות",
+      linkUnavailable: "קישור לפגישה עדיין אינו זמין.",
     },
     notifications: {
       all: "הכל",

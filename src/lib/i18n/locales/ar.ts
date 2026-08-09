@@ -344,6 +344,7 @@ const ar: Dictionary = {
       notes: "ملاحظات",
       join: "انضم للاجتماع",
       duration: "{n} دقيقة",
+      linkUnavailable: "رابط الاجتماع غير متاح بعد.",
     },
     notifications: {
       all: "الكل",

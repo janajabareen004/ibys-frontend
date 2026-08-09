@@ -88,6 +88,7 @@ export type Meeting = {
   participants: string[];
   status: "upcoming" | "past" | "cancelled";
   notes?: string;
+  meetingLink?: string;
 };
 
 export type Notification = {

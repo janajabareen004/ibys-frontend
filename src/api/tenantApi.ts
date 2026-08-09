@@ -109,6 +109,7 @@ type MeetingRow = {
   location: string | null;
   duration_min: number | null;
   participants: string | null;
+  meeting_link: string | null;
 };
 
 type CommentRow = {
@@ -383,6 +384,7 @@ function mapMeeting(row: MeetingRow): Meeting {
       : [],
     status: mapMeetingStatus(row.status, when),
     notes: undefined,
+    meetingLink: row.meeting_link ?? "",
   };
 }
 
