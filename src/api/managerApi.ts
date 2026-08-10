@@ -258,6 +258,200 @@ async function fetchManagerRequests(): Promise<ManagedRequest[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: manager meetings
+//
+// Meetings live at GET /api/meetings (all projects) and each row carries a
+// project_id (unlike requests). Ownership is derived the same way as projects:
+// keep only meetings whose project_id belongs to a project assigned to the
+// authenticated manager (project_manager_id == managerId). All mapping stays in
+// this file; the UI and its 5 status tabs are unchanged.
+// ---------------------------------------------------------------------------
+
+type BackendMeetingRow = {
+  meeting_id: string | number;
+  meeting_date: string | null;
+  meeting_time: string | null;
+  purpose: string | null;
+  status: string | null;
+  project_id: string | number | null;
+  project_manager_id: string | null;
+  location: string | null;
+  duration_min: number | null;
+  participants: string | null;
+  meeting_link: string | null;
+};
+
+/** Map backend status + date to one of the manager UI's 5 meeting buckets. */
+function normalizeMeetingStatus(
+  status: string | null | undefined,
+  whenIso: string,
+): ManagedMeeting["status"] {
+  const s = (status ?? "").trim().toLowerCase();
+  if (s.includes("cancel") || s.includes("reject") || s.includes("declin")) {
+    return "cancelled";
+  }
+  if (s.includes("reschedul")) return "rescheduled";
+  const when = new Date(whenIso);
+  const now = new Date();
+  const sameDay =
+    when.getFullYear() === now.getFullYear() &&
+    when.getMonth() === now.getMonth() &&
+    when.getDate() === now.getDate();
+  if (sameDay) return "today";
+  return when.getTime() >= now.getTime() ? "upcoming" : "past";
+}
+
+function mapManagedMeeting(row: BackendMeetingRow): ManagedMeeting {
+  const when = safeDate(
+    row.meeting_date ? `${row.meeting_date}T${row.meeting_time ?? "00:00"}` : null,
+  );
+  return {
+    id: String(row.meeting_id),
+    title: row.purpose ?? "Meeting",
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    when,
+    durationMin: row.duration_min ?? 0,
+    location: row.location ?? "",
+    agenda: "",
+    participants: row.participants
+      ? row.participants.split(",").map((p) => p.trim()).filter(Boolean)
+      : [],
+    status: normalizeMeetingStatus(row.status, when),
+    notes: undefined,
+  };
+}
+
+async function fetchManagerMeetings(): Promise<ManagedMeeting[]> {
+  const managerId = getStoredUserId();
+  if (!managerId) return [];
+
+  const projects = await apiClient.get<BackendProjectRow[]>("/projects");
+  const mineIds = new Set(
+    (Array.isArray(projects) ? projects : [])
+      .filter((p) => p.project_manager_id === managerId)
+      .map((p) => String(p.project_id)),
+  );
+  if (mineIds.size === 0) return [];
+
+  let meetings: BackendMeetingRow[];
+  try {
+    const res = await apiClient.get<BackendMeetingRow[]>("/meetings");
+    meetings = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+
+  return meetings
+    .filter((m) => m.project_id != null && mineIds.has(String(m.project_id)))
+    .map(mapManagedMeeting);
+}
+
+// ---------------------------------------------------------------------------
+// Real backend: manager meeting mutations (create / update / cancel / delete)
+//
+// Endpoints (all MANAGER-guarded on the backend):
+//   POST   /api/projects/<project_id>/meetings
+//   PUT    /api/meetings/<meeting_id>
+//   DELETE /api/meetings/<meeting_id>
+// The service inserts/updates the raw payload, so the extra meeting columns
+// (location, duration_min, participants) persist alongside the model fields.
+// Every mutation is scoped to the manager's own projects before it runs.
+// ---------------------------------------------------------------------------
+
+type MeetingWriteInput = {
+  title: string;
+  projectId: string;
+  when: string; // ISO datetime from the dialog
+  durationMin?: number;
+  location?: string;
+  participants?: string[];
+  status?: ManagedMeeting["status"];
+  agenda?: string;
+  notes?: string;
+};
+
+/** The set of project ids assigned to the authenticated manager. */
+async function getOwnedProjectIds(): Promise<Set<string>> {
+  const managerId = getStoredUserId();
+  if (!managerId) return new Set();
+  const projects = await apiClient.get<BackendProjectRow[]>("/projects");
+  return new Set(
+    (Array.isArray(projects) ? projects : [])
+      .filter((p) => p.project_manager_id === managerId)
+      .map((p) => String(p.project_id)),
+  );
+}
+
+/** Split an ISO datetime into the backend's separate date/time columns. */
+function toMeetingDateTime(iso: string): { meeting_date: string; meeting_time: string } {
+  const d = new Date(iso);
+  const pad = (n: number) => `${n}`.padStart(2, "0");
+  return {
+    meeting_date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    meeting_time: `${pad(d.getHours())}:${pad(d.getMinutes())}:00`,
+  };
+}
+
+/** Map a manager UI status bucket to a persisted backend status string. */
+function toBackendStatus(status: ManagedMeeting["status"]): string {
+  switch (status) {
+    case "cancelled":
+      return "CANCELLED";
+    case "rescheduled":
+      return "RESCHEDULED";
+    case "past":
+      return "COMPLETED";
+    default:
+      return "PENDING"; // upcoming | today are re-derived from the date on read
+  }
+}
+
+function toMeetingBody(input: MeetingWriteInput): Record<string, unknown> {
+  const { meeting_date, meeting_time } = toMeetingDateTime(input.when);
+  return {
+    meeting_date,
+    meeting_time,
+    purpose: input.title,
+    status: toBackendStatus(input.status ?? "upcoming"),
+    location: input.location ?? "",
+    duration_min: input.durationMin ?? 0,
+    participants: (input.participants ?? []).join(", "),
+  };
+}
+
+async function createManagerMeeting(input: MeetingWriteInput): Promise<ManagedMeeting> {
+  const owned = await getOwnedProjectIds();
+  if (!owned.has(String(input.projectId))) {
+    throw new Error("This project is not assigned to you.");
+  }
+  const body = { ...toMeetingBody(input), project_manager_id: getStoredUserId() };
+  const row = await apiClient.post<BackendMeetingRow>(
+    `/projects/${input.projectId}/meetings`,
+    body,
+  );
+  return mapManagedMeeting(row);
+}
+
+async function updateManagerMeeting(
+  id: string,
+  input: MeetingWriteInput,
+): Promise<ManagedMeeting> {
+  if (input.projectId) {
+    const owned = await getOwnedProjectIds();
+    if (!owned.has(String(input.projectId))) {
+      throw new Error("This project is not assigned to you.");
+    }
+  }
+  const row = await apiClient.put<BackendMeetingRow>(`/meetings/${id}`, toMeetingBody(input));
+  return mapManagedMeeting(row);
+}
+
+async function deleteManagerMeeting(id: string): Promise<boolean> {
+  await apiClient.delete(`/meetings/${id}`);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: update a tenant request's status
 //
 // PATCH /api/requests/<request_id> with { status } persists the new status in
@@ -294,7 +488,7 @@ export const managerApi = {
   getRequests: () =>
     USE_MOCK_API ? mockManagerService.getRequests() : fetchManagerRequests(),
   getMeetings: () =>
-    USE_MOCK_API ? mockManagerService.getMeetings() : apiClient.get<ManagedMeeting[]>("/manager/meetings"),
+    USE_MOCK_API ? mockManagerService.getMeetings() : fetchManagerMeetings(),
   getNotifications: () =>
     USE_MOCK_API ? mockManagerService.getNotifications() : apiClient.get<ManagedNotification[]>("/manager/notifications"),
   getEmployees: () =>
@@ -325,9 +519,18 @@ export const managerMutations = {
   addTaskComment: mockManagerService.addTaskComment,
   toggleSubtask: mockManagerService.toggleSubtask,
   updateStage: mockManagerService.updateStage,
-  createMeeting: mockManagerService.createMeeting,
-  updateMeeting: mockManagerService.updateMeeting,
-  deleteMeeting: mockManagerService.deleteMeeting,
+  createMeeting: (input: MeetingWriteInput) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.createMeeting(input))
+      : createManagerMeeting(input),
+  updateMeeting: (id: string, input: MeetingWriteInput) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.updateMeeting(id, input))
+      : updateManagerMeeting(id, input),
+  deleteMeeting: (id: string) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.deleteMeeting(id))
+      : deleteManagerMeeting(id),
   updateRequest: mockManagerService.updateRequest,
   /**
    * Persist a tenant request's status. In real mode this hits the backend

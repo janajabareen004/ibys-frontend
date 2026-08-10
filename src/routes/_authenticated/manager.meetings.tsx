@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated/manager/meetings")({
 
 function Page() {
   const { t } = useI18n();
-  const { data, loading } = useManagerMeetings();
+  const { data, loading, refetch } = useManagerMeetings();
   const { data: projects } = useManagerProjects();
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ManagedMeeting | null>(null);
@@ -43,10 +43,15 @@ function Page() {
 
   const openNew = () => { setEditing(null); setOpen(true); };
   const openEdit = (m: ManagedMeeting) => { setEditing(m); setOpen(true); };
-  const remove = (m: ManagedMeeting) => {
+  const remove = async (m: ManagedMeeting) => {
     if (!window.confirm(t("manager.pm.meetingForm.delete") + "?")) return;
-    managerActions.deleteMeeting(m.id);
-    toast.success(t("manager.pm.toasts.deleted"));
+    try {
+      await managerActions.deleteMeeting(m.id);
+      toast.success(t("manager.pm.toasts.deleted"));
+      refetch();
+    } catch {
+      toast.error(t("common.error"));
+    }
   };
 
   return (
@@ -81,7 +86,7 @@ function Page() {
         ))}
       </Tabs>
 
-      <MeetingDialog open={open} onOpenChange={setOpen} meeting={editing} projects={projects ?? []} />
+      <MeetingDialog open={open} onOpenChange={setOpen} meeting={editing} projects={projects ?? []} onSaved={refetch} />
     </RoleGuard>
   );
 }

@@ -296,7 +296,7 @@ export function ManagerDashboard() {
       </div>
 
       <TaskDialog open={taskOpen} onOpenChange={setTaskOpen} task={null} projects={projectsList} employees={employees.data ?? []} />
-      <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={projectsList} />
+      <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={projectsList} onSaved={meetings.refetch} />
     </div>
   );
 }

@@ -16,6 +16,7 @@ type Props = {
   meeting?: ManagedMeeting | null;
   projects: ManagedProject[];
   defaultProjectId?: string;
+  onSaved?: () => void;
 };
 
 const STATUSES: ManagedMeeting["status"][] = ["upcoming", "today", "past", "cancelled", "rescheduled"];
@@ -27,9 +28,10 @@ function toLocalInput(iso?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultProjectId }: Props) {
+export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultProjectId, onSaved }: Props) {
   const { t } = useI18n();
   const isEdit = !!meeting;
+  const [saving, setSaving] = React.useState(false);
 
   const [title, setTitle] = React.useState("");
   const [projectId, setProjectId] = React.useState<string>("");
@@ -54,7 +56,8 @@ export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultPr
     setNotes(meeting?.notes ?? "");
   }, [open, meeting, defaultProjectId, projects]);
 
-  const submit = () => {
+  const submit = async () => {
+    if (saving) return;
     if (!title.trim() || !projectId || !when) {
       toast.error(t("common.error"));
       return;
@@ -70,22 +73,38 @@ export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultPr
       status,
       notes,
     };
-    if (isEdit && meeting) {
-      managerActions.updateMeeting(meeting.id, payload);
-      toast.success(t("manager.pm.toasts.updated"));
-    } else {
-      managerActions.createMeeting(payload);
-      toast.success(t("manager.pm.toasts.created"));
+    setSaving(true);
+    try {
+      if (isEdit && meeting) {
+        await managerActions.updateMeeting(meeting.id, payload);
+        toast.success(t("manager.pm.toasts.updated"));
+      } else {
+        await managerActions.createMeeting(payload);
+        toast.success(t("manager.pm.toasts.created"));
+      }
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
     }
-    onOpenChange(false);
   };
 
-  const remove = () => {
-    if (!meeting) return;
+  const remove = async () => {
+    if (!meeting || saving) return;
     if (!window.confirm(t("manager.pm.meetingForm.delete") + "?")) return;
-    managerActions.deleteMeeting(meeting.id);
-    toast.success(t("manager.pm.toasts.deleted"));
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await managerActions.deleteMeeting(meeting.id);
+      toast.success(t("manager.pm.toasts.deleted"));
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -146,11 +165,11 @@ export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultPr
         </div>
         <DialogFooter className="gap-2 sm:justify-between">
           {isEdit ? (
-            <Button variant="destructive" onClick={remove}>{t("manager.pm.meetingForm.delete")}</Button>
+            <Button variant="destructive" onClick={remove} disabled={saving}>{t("manager.pm.meetingForm.delete")}</Button>
           ) : <span />}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("manager.pm.common.cancel")}</Button>
-            <Button onClick={submit}>{t("manager.pm.common.save")}</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("manager.pm.common.cancel")}</Button>
+            <Button onClick={submit} disabled={saving}>{t("manager.pm.common.save")}</Button>
           </div>
         </DialogFooter>
       </DialogContent>

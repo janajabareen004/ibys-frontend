@@ -343,7 +343,7 @@ function Page() {
       </Tabs>
 
       <TaskDialog open={taskOpen} onOpenChange={setTaskOpen} task={null} projects={project.data ? [project.data] : []} employees={employees.data ?? []} defaultProjectId={projectId} />
-      <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={project.data ? [project.data] : []} defaultProjectId={projectId} />
+      <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={meetingsAll.refetch} />
       <PhotoUploadDialog open={photoOpen} onOpenChange={setPhotoOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} />
       <DocumentUploadDialog open={docOpen} onOpenChange={setDocOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} />
       <StageUpdateDialog open={!!stageEditing} onOpenChange={(o) => !o && setStageEditing(null)} stage={stageEditing} />
