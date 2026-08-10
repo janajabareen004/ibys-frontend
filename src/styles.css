@@ -376,3 +376,29 @@
     background: color-mix(in oklab, var(--primary) 4%, transparent);
   }
 }
+
+/*
+ * Thin, unobtrusive scrollbar scoped to the app sidebar only. Keeps the
+ * sidebar scrollable when its nav content exceeds the viewport, without the
+ * wide default browser scrollbar overlapping the UI. Applied via a class so it
+ * never affects main page / document scrolling. Cross-browser: Firefox uses
+ * scrollbar-width/color; Chromium & WebKit use the ::-webkit-scrollbar pseudos.
+ */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--sidebar-border) 80%, transparent) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--sidebar-border) 80%, transparent);
+  border-radius: 9999px;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
+}

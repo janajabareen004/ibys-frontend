@@ -48,7 +48,7 @@ export function AppSidebar() {
           )}
         </div>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="sidebar-scroll">
         {sections.map((section) => (
           <SidebarGroup key={section.labelKey}>
             <SidebarGroupLabel>{t(section.labelKey)}</SidebarGroupLabel>
