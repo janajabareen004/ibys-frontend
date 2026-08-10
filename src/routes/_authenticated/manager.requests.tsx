@@ -25,7 +25,7 @@ export const Route = createFileRoute("/_authenticated/manager/requests")({
 
 function Page() {
   const { t } = useI18n();
-  const { data: requests, loading } = useManagerRequests();
+  const { data: requests, loading, refetch } = useManagerRequests();
   const { data: projects } = useManagerProjects();
   const { data: employees } = useManagerEmployees();
   const [q, setQ] = React.useState("");
@@ -73,7 +73,7 @@ function Page() {
               filter(s).length === 0 ? <EmptyState title={t("manager.requests.empty")} /> : (
                 <div className="grid gap-3">
                   {filter(s).map((r) => (
-                    <RequestCard key={r.id} request={r} projectName={projectName(r.projectId)} assigneeName={employeeName(r.assignedTo)} />
+                    <RequestCard key={r.id} request={r} projectName={projectName(r.projectId)} assigneeName={employeeName(r.assignedTo)} onUpdated={refetch} />
                   ))}
                 </div>
               )

@@ -16,23 +16,34 @@ const ICONS = {
   document: FileText,
 } as const;
 
-export function RequestCard({ request, projectName, assigneeName }: { request: ManagedRequest; projectName?: string; assigneeName?: string }) {
+export function RequestCard({ request, projectName, assigneeName, onUpdated }: { request: ManagedRequest; projectName?: string; assigneeName?: string; onUpdated?: () => void }) {
   const { t, formatDate } = useI18n();
   const Icon = ICONS[request.category];
   const [replyOpen, setReplyOpen] = React.useState(false);
+  const [pending, setPending] = React.useState(false);
 
-  const approve = () => {
-    managerActions.updateRequest(request.id, { status: "approved" });
-    toast.success(t("manager.pm.requestForm.approvedToast"));
+  // Persist the status change to the backend first; only surface success (and
+  // refetch so the row moves to the correct tab) after Supabase confirms it.
+  const changeStatus = async (
+    status: "approved" | "rejected" | "archived",
+    successKey: string,
+  ) => {
+    if (pending) return;
+    setPending(true);
+    try {
+      await managerActions.updateRequestStatus(request.id, status);
+      toast.success(t(successKey));
+      onUpdated?.();
+    } catch {
+      toast.error(t("manager.pm.requestForm.updateError"));
+    } finally {
+      setPending(false);
+    }
   };
-  const reject = () => {
-    managerActions.updateRequest(request.id, { status: "rejected" });
-    toast.success(t("manager.pm.requestForm.rejectedToast"));
-  };
-  const archive = () => {
-    managerActions.updateRequest(request.id, { status: "archived" });
-    toast.success(t("manager.pm.requestForm.archivedToast"));
-  };
+
+  const approve = () => changeStatus("approved", "manager.pm.requestForm.approvedToast");
+  const reject = () => changeStatus("rejected", "manager.pm.requestForm.rejectedToast");
+  const archive = () => changeStatus("archived", "manager.pm.requestForm.archivedToast");
 
   return (
     <Card className="transition-all hover:shadow-md">
@@ -67,10 +78,10 @@ export function RequestCard({ request, projectName, assigneeName }: { request: M
             <span>{formatDate(request.createdAt, { dateStyle: "medium" })}</span>
           </div>
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button size="sm" onClick={approve} disabled={request.status === "approved" || request.status === "archived"}>{t("manager.requests.approve")}</Button>
-            <Button size="sm" variant="outline" onClick={reject} disabled={request.status === "rejected" || request.status === "archived"}>{t("manager.requests.reject")}</Button>
+            <Button size="sm" onClick={approve} disabled={pending || request.status === "approved" || request.status === "archived"}>{t("manager.requests.approve")}</Button>
+            <Button size="sm" variant="outline" onClick={reject} disabled={pending || request.status === "rejected" || request.status === "archived"}>{t("manager.requests.reject")}</Button>
             <Button size="sm" variant="secondary" onClick={() => setReplyOpen(true)}>{t("manager.requests.reply")}</Button>
-            <Button size="sm" variant="ghost" onClick={archive} disabled={request.status === "archived"}>{t("manager.requests.archive")}</Button>
+            <Button size="sm" variant="ghost" onClick={archive} disabled={pending || request.status === "archived"}>{t("manager.requests.archive")}</Button>
           </div>
         </div>
       </CardContent>

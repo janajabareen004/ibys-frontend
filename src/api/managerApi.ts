@@ -257,6 +257,25 @@ async function fetchManagerRequests(): Promise<ManagedRequest[]> {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: update a tenant request's status
+//
+// PATCH /api/requests/<request_id> with { status } persists the new status in
+// Supabase and returns the updated row (roles TENANT/MANAGER/BUILDING_COMPANY).
+// The status is sent lowercase-canonical; reads normalize case-insensitively.
+// ---------------------------------------------------------------------------
+async function updateManagerRequestStatus(
+  requestId: string,
+  status: TenantRequestStatus,
+): Promise<ManagedRequest> {
+  const row = await apiClient.patch<BackendRequestRow>(`/requests/${requestId}`, {
+    status,
+  });
+  // The backend returns the row without project/tenant-name context; those are
+  // re-resolved on the next list refetch, so map with what the row provides.
+  return mapManagedRequest(row, "", "");
+}
+
 export const managerApi = {
   getProjects: () =>
     USE_MOCK_API ? mockManagerService.getProjects() : fetchManagerProjects(),
@@ -310,6 +329,16 @@ export const managerMutations = {
   updateMeeting: mockManagerService.updateMeeting,
   deleteMeeting: mockManagerService.deleteMeeting,
   updateRequest: mockManagerService.updateRequest,
+  /**
+   * Persist a tenant request's status. In real mode this hits the backend
+   * (PATCH /requests/:id) and resolves only after Supabase confirms the update;
+   * in mock mode it updates the in-memory store. Always returns a Promise so
+   * callers can await success before showing a toast / refetching.
+   */
+  updateRequestStatus: (requestId: string, status: TenantRequestStatus) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.updateRequest(requestId, { status }))
+      : updateManagerRequestStatus(requestId, status),
   markNotificationRead: mockManagerService.markNotificationRead,
   markAllNotificationsRead: mockManagerService.markAllNotificationsRead,
   addPhoto: mockManagerService.addPhoto,
