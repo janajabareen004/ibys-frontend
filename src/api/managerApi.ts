@@ -166,7 +166,11 @@ function normalizeRequestPriority(value: string | null | undefined): TenantReque
   return "medium";
 }
 
-function mapManagedRequest(row: BackendRequestRow, projectId: string): ManagedRequest {
+function mapManagedRequest(
+  row: BackendRequestRow,
+  projectId: string,
+  tenantName: string,
+): ManagedRequest {
   return {
     id: String(row.request_id),
     // The tenant portal only creates photo requests; the backend has no
@@ -175,9 +179,8 @@ function mapManagedRequest(row: BackendRequestRow, projectId: string): ManagedRe
     status: normalizeRequestStatus(row.status),
     priority: normalizeRequestPriority(row.priority),
     projectId,
-    // Backend requests carry only tenant_id (no tenant name); left blank rather
-    // than inventing data.
-    tenantName: "",
+    // Resolved from GET /tenants/<tenant_id> (requests carry only tenant_id).
+    tenantName,
     assignedTo: undefined,
     description: row.description ?? "",
     reply: undefined,
@@ -224,9 +227,34 @@ async function fetchManagerRequests(): Promise<ManagedRequest[]> {
     return [];
   }
 
-  return requests
-    .filter((r) => r.tenant_id != null && tenantProject.has(r.tenant_id))
-    .map((r) => mapManagedRequest(r, tenantProject.get(r.tenant_id as string) ?? ""));
+  const scoped = requests.filter(
+    (r) => r.tenant_id != null && tenantProject.has(r.tenant_id),
+  );
+
+  // Requests/apartments rows carry only tenant_id; resolve display names via
+  // GET /tenants/<tenant_id> (one lookup per distinct tenant in scope).
+  const tenantIds = [...new Set(scoped.map((r) => r.tenant_id as string))];
+  const nameEntries = await Promise.all(
+    tenantIds.map(async (tid) => {
+      try {
+        const profile = await apiClient.get<{ full_name?: string | null }>(
+          `/tenants/${tid}`,
+        );
+        return [tid, profile?.full_name ?? ""] as const;
+      } catch {
+        return [tid, ""] as const;
+      }
+    }),
+  );
+  const tenantNames = new Map<string, string>(nameEntries);
+
+  return scoped.map((r) =>
+    mapManagedRequest(
+      r,
+      tenantProject.get(r.tenant_id as string) ?? "",
+      tenantNames.get(r.tenant_id as string) ?? "",
+    ),
+  );
 }
 
 export const managerApi = {
