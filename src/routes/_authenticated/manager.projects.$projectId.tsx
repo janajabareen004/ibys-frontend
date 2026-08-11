@@ -261,7 +261,7 @@ function Page() {
                     <p className="line-clamp-1 text-xs font-medium">{ph.title}</p>
                     <p className="text-[10px] text-muted-foreground">{t(`tenant.timeline.stages.${ph.stageKey}`)}</p>
                   </div>
-                  <Button variant="secondary" size="icon" className="absolute end-1 top-1 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100" onClick={() => { managerActions.deletePhoto(ph.id); toast.success(t("manager.pm.toasts.deleted")); }}><Trash2 className="h-3 w-3" /></Button>
+                  <Button variant="secondary" size="icon" className="absolute end-1 top-1 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100" onClick={async () => { try { await managerActions.deletePhoto(ph.id); toast.success(t("manager.pm.toasts.deleted")); photosAll.refetch(); } catch { toast.error(t("common.error")); } }}><Trash2 className="h-3 w-3" /></Button>
                 </div>
               ))}
             </div>
@@ -344,7 +344,7 @@ function Page() {
 
       <TaskDialog open={taskOpen} onOpenChange={setTaskOpen} task={null} projects={project.data ? [project.data] : []} employees={employees.data ?? []} defaultProjectId={projectId} />
       <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={meetingsAll.refetch} />
-      <PhotoUploadDialog open={photoOpen} onOpenChange={setPhotoOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} />
+      <PhotoUploadDialog open={photoOpen} onOpenChange={setPhotoOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={photosAll.refetch} />
       <DocumentUploadDialog open={docOpen} onOpenChange={setDocOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} />
       <StageUpdateDialog open={!!stageEditing} onOpenChange={(o) => !o && setStageEditing(null)} stage={stageEditing} />
     </RoleGuard>

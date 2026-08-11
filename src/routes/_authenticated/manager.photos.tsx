@@ -30,7 +30,7 @@ const STAGES: ProjectStageKey[] = ["structural", "electrical", "plaster", "windo
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data: photos, loading } = useManagerPhotos();
+  const { data: photos, loading, refetch } = useManagerPhotos();
   const { data: projects } = useManagerProjects();
   const [q, setQ] = React.useState("");
   const [projectId, setProjectId] = React.useState<string>("all");
@@ -45,10 +45,15 @@ function Page() {
     return matchQ && matchP && matchS;
   });
 
-  const remove = (id: string) => {
+  const remove = async (id: string) => {
     if (!window.confirm(t("manager.pm.photos.deleteConfirm"))) return;
-    managerActions.deletePhoto(id);
-    toast.success(t("manager.pm.toasts.deleted"));
+    try {
+      await managerActions.deletePhoto(id);
+      toast.success(t("manager.pm.toasts.deleted"));
+      refetch();
+    } catch {
+      toast.error(t("common.error"));
+    }
   };
 
   return (
@@ -103,7 +108,7 @@ function Page() {
         </div>
       )}
 
-      <PhotoUploadDialog open={open} onOpenChange={setOpen} projects={projects ?? []} />
+      <PhotoUploadDialog open={open} onOpenChange={setOpen} projects={projects ?? []} onSaved={refetch} />
     </RoleGuard>
   );
 }

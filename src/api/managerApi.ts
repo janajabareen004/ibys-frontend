@@ -20,6 +20,7 @@ import {
   type ManagedDocument,
   type ManagedNote,
   type ManagedTenant,
+  type ProjectStageKey,
   type TenantRequestCategory,
   type TenantRequestStatus,
   type TenantRequestPriority,
@@ -464,6 +465,123 @@ async function approveManagerMeeting(id: string): Promise<ManagedMeeting> {
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: manager site photos
+//
+// Photos are image rows: GET /api/images (all projects) — each carries a
+// project_id — plus POST /api/projects/<id>/images and DELETE /api/images/<id>
+// (both MANAGER-guarded), the same endpoints the tenant reads. Ownership is
+// derived like projects/meetings: keep only images whose project_id belongs to
+// a project assigned to the authenticated manager.
+// ---------------------------------------------------------------------------
+
+type BackendImageRow = {
+  image_id: string | number;
+  project_id: string | number | null;
+  title: string | null;
+  stage: string | null;
+  upload_date: string | null;
+  image_url?: string | null;
+  image_path?: string | null;
+};
+
+type PhotoWriteInput = {
+  projectId: string;
+  stageKey: ProjectStageKey;
+  title: string;
+  uploadedBy?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  description?: string;
+};
+
+// Deterministic gradient seed so a given image always renders the same swatch
+// (the manager UI shows a colored placeholder, not the stored image itself).
+const PHOTO_SWATCHES = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+function swatchFor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return PHOTO_SWATCHES[h % PHOTO_SWATCHES.length];
+}
+
+/** Best-effort map of a free-form backend image stage to a canonical stage key. */
+function toManagerStageKey(stage: string | null | undefined): ProjectStageKey {
+  const s = (stage ?? "").trim().toLowerCase();
+  if (s.includes("electric")) return "electrical";
+  if (s.includes("plaster")) return "plaster";
+  if (s.includes("window")) return "windows";
+  if (s.includes("finish") || s.includes("interior")) return "finishing";
+  if (s.includes("handover") || s.includes("hand over")) return "handover";
+  // site preparation, foundation, structure construction, or unknown/empty
+  return "structural";
+}
+
+function mapManagedPhoto(row: BackendImageRow): ManagedPhoto {
+  return {
+    id: String(row.image_id),
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    stageKey: toManagerStageKey(row.stage),
+    title: row.title ?? "Project photo",
+    uploadedBy: "",
+    uploadedAt: safeDate(row.upload_date),
+    color: swatchFor(String(row.image_id)),
+  };
+}
+
+async function fetchManagerPhotos(): Promise<ManagedPhoto[]> {
+  const managerId = getStoredUserId();
+  if (!managerId) return [];
+
+  const projects = await apiClient.get<BackendProjectRow[]>("/projects");
+  const mineIds = new Set(
+    (Array.isArray(projects) ? projects : [])
+      .filter((p) => p.project_manager_id === managerId)
+      .map((p) => String(p.project_id)),
+  );
+  if (mineIds.size === 0) return [];
+
+  let images: BackendImageRow[];
+  try {
+    const res = await apiClient.get<BackendImageRow[]>("/images");
+    images = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+
+  return images
+    .filter((i) => i.project_id != null && mineIds.has(String(i.project_id)))
+    .map(mapManagedPhoto);
+}
+
+async function createManagerPhoto(input: PhotoWriteInput): Promise<ManagedPhoto> {
+  const owned = await getOwnedProjectIds();
+  if (!owned.has(String(input.projectId))) {
+    throw new Error("This project is not assigned to you.");
+  }
+  // The file is uploaded to Supabase Storage first; its public URL is stored in
+  // both image_url and image_path (image_path is NOT NULL). A missing URL falls
+  // back to the file name only for non-storage/mock paths.
+  const url = input.imageUrl ?? input.imagePath ?? input.title ?? "photo";
+  const body = {
+    image_path: url,
+    image_url: input.imageUrl ?? url,
+    title: input.title,
+    description: input.description ?? "",
+    stage: input.stageKey,
+    upload_date: new Date().toISOString().slice(0, 10),
+  };
+  const row = await apiClient.post<BackendImageRow>(
+    `/projects/${input.projectId}/images`,
+    body,
+  );
+  return mapManagedPhoto(row);
+}
+
+async function deleteManagerPhoto(id: string): Promise<boolean> {
+  await apiClient.delete(`/images/${id}`);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: update a tenant request's status
 //
 // PATCH /api/requests/<request_id> with { status } persists the new status in
@@ -510,7 +628,7 @@ export const managerApi = {
   getActivity: () =>
     USE_MOCK_API ? mockManagerService.getActivity() : apiClient.get<ActivityEvent[]>("/manager/activity"),
   getPhotos: () =>
-    USE_MOCK_API ? mockManagerService.getPhotos() : apiClient.get<ManagedPhoto[]>("/manager/photos"),
+    USE_MOCK_API ? mockManagerService.getPhotos() : fetchManagerPhotos(),
   getDocuments: () =>
     USE_MOCK_API ? mockManagerService.getDocuments() : apiClient.get<ManagedDocument[]>("/manager/documents"),
   getNotes: () =>
@@ -560,8 +678,21 @@ export const managerMutations = {
       : updateManagerRequestStatus(requestId, status),
   markNotificationRead: mockManagerService.markNotificationRead,
   markAllNotificationsRead: mockManagerService.markAllNotificationsRead,
-  addPhoto: mockManagerService.addPhoto,
-  deletePhoto: mockManagerService.deletePhoto,
+  addPhoto: (input: PhotoWriteInput) =>
+    USE_MOCK_API
+      ? Promise.resolve(
+          mockManagerService.addPhoto({
+            projectId: input.projectId,
+            stageKey: input.stageKey,
+            title: input.title,
+            uploadedBy: input.uploadedBy ?? "Project Manager",
+          }),
+        )
+      : createManagerPhoto(input),
+  deletePhoto: (id: string) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.deletePhoto(id))
+      : deleteManagerPhoto(id),
   addDocument: mockManagerService.addDocument,
   deleteDocument: mockManagerService.deleteDocument,
   addNote: mockManagerService.addNote,
