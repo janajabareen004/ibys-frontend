@@ -180,6 +180,7 @@ export type ManagedDocument = {
   version: string;
   uploadedBy: string;
   uploadedAt: string;
+  url?: string; // persisted file_url (used for download); absent for legacy rows
 };
 
 export type ManagedNote = {

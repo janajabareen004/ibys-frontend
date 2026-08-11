@@ -18,6 +18,7 @@ import {
   type ActivityEvent,
   type ManagedPhoto,
   type ManagedDocument,
+  type ManagedDocumentCategory,
   type ManagedNote,
   type ManagedTenant,
   type ProjectStageKey,
@@ -584,6 +585,99 @@ async function deleteManagerPhoto(id: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: manager documents
+//
+// Documents live at GET /api/projects/<id>/documents (per project) plus
+// POST /api/projects/<id>/documents and DELETE /api/documents/<id> (both
+// MANAGER/BUILDING_COMPANY-guarded) — the same rows the tenant reads. Listing
+// is scoped to the manager's owned projects by fetching each owned project's
+// documents and combining. The actual file is uploaded to the
+// `project-documents` Storage bucket first; its public URL is stored in file_url.
+// ---------------------------------------------------------------------------
+
+type BackendDocumentRow = {
+  document_id: string | number;
+  project_id: string | number | null;
+  file_name: string | null;
+  upload_date: string | null;
+  category?: string | null;
+  file_url?: string | null;
+};
+
+type DocumentWriteInput = {
+  projectId: string;
+  stageKey?: ProjectStageKey;
+  name: string;
+  category: ManagedDocumentCategory;
+  version?: string;
+  size?: string;
+  uploadedBy?: string;
+  fileUrl?: string;
+};
+
+const DOC_CATEGORIES: ManagedDocumentCategory[] = ["contract", "permit", "drawing", "report", "invoice"];
+
+/** Normalize a free-form backend category to a canonical one (defaults to report). */
+function mapDocumentCategory(value: string | null | undefined): ManagedDocumentCategory {
+  const s = (value ?? "").trim().toLowerCase();
+  return (DOC_CATEGORIES as string[]).includes(s) ? (s as ManagedDocumentCategory) : "report";
+}
+
+function mapManagedDocument(row: BackendDocumentRow): ManagedDocument {
+  return {
+    id: String(row.document_id),
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    name: row.file_name ?? "Document",
+    category: mapDocumentCategory(row.category),
+    // The backend documents schema has no size/version columns.
+    size: "",
+    version: "",
+    uploadedBy: "",
+    uploadedAt: safeDate(row.upload_date),
+    url: row.file_url || undefined,
+  };
+}
+
+async function fetchManagerDocuments(): Promise<ManagedDocument[]> {
+  const owned = await getOwnedProjectIds();
+  if (owned.size === 0) return [];
+  const perProject = await Promise.all(
+    [...owned].map((pid) =>
+      apiClient
+        .get<BackendDocumentRow[]>(`/projects/${pid}/documents`)
+        .then((res) => (Array.isArray(res) ? res : []))
+        .catch(() => [] as BackendDocumentRow[]),
+    ),
+  );
+  return perProject.flat().map(mapManagedDocument);
+}
+
+async function createManagerDocument(input: DocumentWriteInput): Promise<ManagedDocument> {
+  const owned = await getOwnedProjectIds();
+  if (!owned.has(String(input.projectId))) {
+    throw new Error("This project is not assigned to you.");
+  }
+  // project_id comes from the URL only; upload_date defaults server-side but is
+  // set explicitly for consistency. file_url is the public Storage URL.
+  const body = {
+    file_name: input.name,
+    file_url: input.fileUrl ?? "",
+    category: input.category,
+    upload_date: new Date().toISOString().slice(0, 10),
+  };
+  const row = await apiClient.post<BackendDocumentRow>(
+    `/projects/${input.projectId}/documents`,
+    body,
+  );
+  return mapManagedDocument(row);
+}
+
+async function deleteManagerDocument(id: string): Promise<boolean> {
+  await apiClient.delete(`/documents/${id}`);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: update a tenant request's status
 //
 // PATCH /api/requests/<request_id> with { status } persists the new status in
@@ -632,7 +726,7 @@ export const managerApi = {
   getPhotos: () =>
     USE_MOCK_API ? mockManagerService.getPhotos() : fetchManagerPhotos(),
   getDocuments: () =>
-    USE_MOCK_API ? mockManagerService.getDocuments() : apiClient.get<ManagedDocument[]>("/manager/documents"),
+    USE_MOCK_API ? mockManagerService.getDocuments() : fetchManagerDocuments(),
   getNotes: () =>
     USE_MOCK_API ? mockManagerService.getNotes() : apiClient.get<ManagedNote[]>("/manager/notes"),
   getTenants: () =>
@@ -695,8 +789,24 @@ export const managerMutations = {
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.deletePhoto(id))
       : deleteManagerPhoto(id),
-  addDocument: mockManagerService.addDocument,
-  deleteDocument: mockManagerService.deleteDocument,
+  addDocument: (input: DocumentWriteInput) =>
+    USE_MOCK_API
+      ? Promise.resolve(
+          mockManagerService.addDocument({
+            projectId: input.projectId,
+            stageKey: input.stageKey,
+            name: input.name,
+            category: input.category,
+            size: input.size ?? "—",
+            version: input.version ?? "v1",
+            uploadedBy: input.uploadedBy ?? "Project Manager",
+          }),
+        )
+      : createManagerDocument(input),
+  deleteDocument: (id: string) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.deleteDocument(id))
+      : deleteManagerDocument(id),
   addNote: mockManagerService.addNote,
   deleteNote: mockManagerService.deleteNote,
 };

@@ -26,3 +26,6 @@ export const AUTH_STORAGE_KEY = "ibys.auth";
 export const SUPABASE_URL: string = env.VITE_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY: string = env.VITE_SUPABASE_ANON_KEY ?? "";
 export const STORAGE_BUCKET = "project-images";
+// Dedicated bucket for manager/tenant documents (matches the file_url of existing
+// backend document rows: .../storage/v1/object/public/project-documents/...).
+export const DOCUMENTS_STORAGE_BUCKET = "project-documents";

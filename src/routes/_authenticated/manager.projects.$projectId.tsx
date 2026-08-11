@@ -277,7 +277,7 @@ function Page() {
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <div className="min-w-0 flex-1"><p className="truncate font-medium">{d.name}</p><p className="text-xs text-muted-foreground">{d.size} · {formatDate(d.uploadedAt)}</p></div>
                   <Badge variant="secondary" className="rounded-full">{t(`manager.pm.documents.categories.${d.category}`)}</Badge>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { managerActions.deleteDocument(d.id); toast.success(t("manager.pm.toasts.deleted")); }}><Trash2 className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={async () => { try { await managerActions.deleteDocument(d.id); toast.success(t("manager.pm.toasts.deleted")); docsAll.refetch(); } catch { toast.error(t("common.error")); } }}><Trash2 className="h-4 w-4" /></Button>
                 </li>
               ))}
             </ul>
@@ -345,7 +345,7 @@ function Page() {
       <TaskDialog open={taskOpen} onOpenChange={setTaskOpen} task={null} projects={project.data ? [project.data] : []} employees={employees.data ?? []} defaultProjectId={projectId} />
       <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={meetingsAll.refetch} />
       <PhotoUploadDialog open={photoOpen} onOpenChange={setPhotoOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={photosAll.refetch} />
-      <DocumentUploadDialog open={docOpen} onOpenChange={setDocOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} />
+      <DocumentUploadDialog open={docOpen} onOpenChange={setDocOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={docsAll.refetch} />
       <StageUpdateDialog open={!!stageEditing} onOpenChange={(o) => !o && setStageEditing(null)} stage={stageEditing} />
     </RoleGuard>
   );

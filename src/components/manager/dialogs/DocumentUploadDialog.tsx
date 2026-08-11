@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useAuth } from "@/context/AuthProvider";
 import { managerActions } from "@/hooks/useManagerData";
+import { USE_MOCK_API } from "@/api/config";
+import { uploadProjectDocument, removeProjectDocument } from "@/lib/storage";
 import type {
   ManagedDocumentCategory,
   ManagedProject,
@@ -19,12 +21,13 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   projects: ManagedProject[];
   defaultProjectId?: string;
+  onSaved?: () => void;
 };
 
 const CATEGORIES: ManagedDocumentCategory[] = ["contract", "permit", "drawing", "report", "invoice"];
 const STAGES: ProjectStageKey[] = ["structural", "electrical", "plaster", "windows", "finishing", "handover"];
 
-export function DocumentUploadDialog({ open, onOpenChange, projects, defaultProjectId }: Props) {
+export function DocumentUploadDialog({ open, onOpenChange, projects, defaultProjectId, onSaved }: Props) {
   const { t } = useI18n();
   const { user } = useAuth();
   const [name, setName] = React.useState("");
@@ -32,6 +35,9 @@ export function DocumentUploadDialog({ open, onOpenChange, projects, defaultProj
   const [stageKey, setStageKey] = React.useState<ProjectStageKey | "none">("none");
   const [category, setCategory] = React.useState<ManagedDocumentCategory>("report");
   const [version, setVersion] = React.useState("v1");
+  const [file, setFile] = React.useState<File | null>(null);
+  const [fileName, setFileName] = React.useState<string>("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -40,21 +46,72 @@ export function DocumentUploadDialog({ open, onOpenChange, projects, defaultProj
     setStageKey("none");
     setCategory("report");
     setVersion("v1");
+    setFile(null);
+    setFileName("");
   }, [open, defaultProjectId, projects]);
 
-  const submit = () => {
-    if (!name.trim() || !projectId) return;
-    managerActions.addDocument({
+  const submit = async () => {
+    if (!projectId || saving) return;
+    const displayName = name.trim() || fileName;
+    if (!displayName) return;
+
+    const baseInput = {
       projectId,
       stageKey: stageKey === "none" ? undefined : stageKey,
-      name: name.trim(),
+      name: displayName,
       category,
-      size: "1.2 MB",
+      size: "—",
       version,
       uploadedBy: user?.name ?? "Project Manager",
-    });
-    toast.success(t("manager.pm.toasts.uploaded"));
-    onOpenChange(false);
+    };
+
+    // Mock mode keeps the in-memory behaviour and never touches Storage.
+    if (USE_MOCK_API) {
+      setSaving(true);
+      try {
+        await managerActions.addDocument(baseInput);
+        toast.success(t("manager.pm.toasts.uploaded"));
+        onSaved?.();
+        onOpenChange(false);
+      } catch {
+        toast.error(t("common.error"));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Live mode: a real file is required — it is uploaded to Storage first.
+    if (!file) {
+      toast.error(t("manager.pm.documents.chooseFile"));
+      return;
+    }
+    setSaving(true);
+
+    // 1) Upload the actual file to Supabase Storage. On failure, stop here so no
+    //    orphan database row is created.
+    let uploaded: { path: string; publicUrl: string };
+    try {
+      uploaded = await uploadProjectDocument(file, projectId);
+    } catch {
+      toast.error(t("manager.pm.documents.uploadFailed"));
+      setSaving(false);
+      return;
+    }
+
+    // 2) Persist the document record with the public URL. If this fails, remove
+    //    the just-uploaded object to avoid orphan files, then surface the error.
+    try {
+      await managerActions.addDocument({ ...baseInput, fileUrl: uploaded.publicUrl });
+      toast.success(t("manager.pm.toasts.uploaded"));
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      await removeProjectDocument(uploaded.path);
+      toast.error(t("manager.pm.documents.uploadFailed"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -104,12 +161,16 @@ export function DocumentUploadDialog({ open, onOpenChange, projects, defaultProj
           </div>
           <div className="grid gap-1.5">
             <Label>{t("manager.pm.photos.form.pick")}</Label>
-            <Input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" />
+            <Input
+              type="file"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+              onChange={(e) => { const f = e.target.files?.[0] ?? null; setFile(f); setFileName(f?.name ?? ""); }}
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("manager.pm.common.cancel")}</Button>
-          <Button onClick={submit}>{t("manager.pm.common.save")}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("manager.pm.common.cancel")}</Button>
+          <Button onClick={submit} disabled={saving}>{t("manager.pm.common.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

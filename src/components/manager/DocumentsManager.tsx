@@ -22,7 +22,7 @@ const CATEGORIES: ManagedDocumentCategory[] = ["contract", "permit", "drawing", 
  */
 export function DocumentsManager({ showHeader = true }: { showHeader?: boolean }) {
   const { t, formatDate } = useI18n();
-  const { data: docs, loading } = useManagerDocuments();
+  const { data: docs, loading, refetch } = useManagerDocuments();
   const { data: projects } = useManagerProjects();
   const [q, setQ] = React.useState("");
   const [projectId, setProjectId] = React.useState<string>("all");
@@ -37,10 +37,23 @@ export function DocumentsManager({ showHeader = true }: { showHeader?: boolean }
     return matchQ && matchP && matchC;
   });
 
-  const remove = (id: string) => {
+  const remove = async (id: string) => {
     if (!window.confirm(t("manager.pm.documents.deleteConfirm"))) return;
-    managerActions.deleteDocument(id);
-    toast.success(t("manager.pm.toasts.deleted"));
+    try {
+      await managerActions.deleteDocument(id);
+      toast.success(t("manager.pm.toasts.deleted"));
+      refetch();
+    } catch {
+      toast.error(t("common.error"));
+    }
+  };
+
+  const download = (url: string | undefined) => {
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      toast.info(t("placeholder.comingSoon"));
+    }
   };
 
   const newButton = (
@@ -110,7 +123,7 @@ export function DocumentsManager({ showHeader = true }: { showHeader?: boolean }
                     <td className="px-3 py-2 text-muted-foreground">{d.uploadedBy}<div className="text-xs">{formatDate(d.uploadedAt)}</div></td>
                     <td className="px-3 py-2 text-end">
                       <Card className="inline-flex gap-1 p-0 shadow-none">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.info(t("placeholder.comingSoon"))} aria-label="Download"><Download className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => download(d.url)} aria-label="Download"><Download className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => remove(d.id)} aria-label={t("manager.pm.common.delete")}><Trash2 className="h-4 w-4" /></Button>
                       </Card>
                     </td>
@@ -122,7 +135,7 @@ export function DocumentsManager({ showHeader = true }: { showHeader?: boolean }
         </div>
       )}
 
-      <DocumentUploadDialog open={open} onOpenChange={setOpen} projects={projects ?? []} />
+      <DocumentUploadDialog open={open} onOpenChange={setOpen} projects={projects ?? []} onSaved={refetch} />
     </>
   );
 }

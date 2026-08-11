@@ -1,5 +1,5 @@
 /**
- * Supabase Storage helper for uploading project image files from the browser.
+ * Supabase Storage helper for uploading project files from the browser.
  *
  * Security: this uses ONLY the public anon key (VITE_SUPABASE_ANON_KEY) plus the
  * signed-in user's access token (stored by AuthProvider). The service_role /
@@ -11,6 +11,7 @@ import {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   STORAGE_BUCKET,
+  DOCUMENTS_STORAGE_BUCKET,
   AUTH_STORAGE_KEY,
 } from "@/api/config";
 
@@ -42,48 +43,71 @@ function storageClient(): SupabaseClient {
 }
 
 /** Make a filesystem-safe object name segment. */
-function sanitizeFileName(name: string): string {
+function sanitizeFileName(name: string, fallback: string): string {
   const cleaned = name
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9.-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return cleaned || "photo";
+  return cleaned || fallback;
 }
 
-export type UploadedImage = { path: string; publicUrl: string };
+export type UploadedObject = { path: string; publicUrl: string };
+/** @deprecated use UploadedObject */
+export type UploadedImage = UploadedObject;
 
 /**
- * Upload a File to `project-images` at
- * `project-{projectId}/{timestamp}-{sanitizedFileName}` and return the storage
- * path plus its public URL. Throws on failure so callers can avoid creating a
- * database row for a file that never landed in storage.
+ * Upload a File to `bucket` at `project-{projectId}/{timestamp}-{sanitizedName}`
+ * and return the storage path plus its public URL. Throws on failure so callers
+ * can avoid creating a database row for a file that never landed in storage.
  */
-export async function uploadProjectImage(
+async function uploadToBucket(
   file: File,
   projectId: string,
-): Promise<UploadedImage> {
+  bucket: string,
+  fallbackName: string,
+): Promise<UploadedObject> {
   if (!isStorageConfigured) {
     throw new Error("Supabase Storage is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).");
   }
   const sb = storageClient();
-  const path = `project-${projectId}/${Date.now()}-${sanitizeFileName(file.name)}`;
-  const { error } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, {
+  const path = `project-${projectId}/${Date.now()}-${sanitizeFileName(file.name, fallbackName)}`;
+  const { error } = await sb.storage.from(bucket).upload(path, file, {
     cacheControl: "3600",
     upsert: false,
     contentType: file.type || undefined,
   });
   if (error) throw error;
-  const { data } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+  const { data } = sb.storage.from(bucket).getPublicUrl(path);
   return { path, publicUrl: data.publicUrl };
 }
 
 /** Best-effort removal of a previously uploaded object (used to avoid orphans). */
-export async function removeProjectImage(path: string): Promise<void> {
+async function removeFromBucket(bucket: string, path: string): Promise<void> {
   if (!isStorageConfigured || !path) return;
   try {
-    await storageClient().storage.from(STORAGE_BUCKET).remove([path]);
+    await storageClient().storage.from(bucket).remove([path]);
   } catch {
     // Best effort only — a failed cleanup must not mask the original error.
   }
+}
+
+/** Upload a project image to the `project-images` bucket. */
+export function uploadProjectImage(file: File, projectId: string): Promise<UploadedObject> {
+  return uploadToBucket(file, projectId, STORAGE_BUCKET, "photo");
+}
+
+/** Best-effort removal of a previously uploaded image object. */
+export function removeProjectImage(path: string): Promise<void> {
+  return removeFromBucket(STORAGE_BUCKET, path);
+}
+
+/** Upload a project document to the `project-documents` bucket. */
+export function uploadProjectDocument(file: File, projectId: string): Promise<UploadedObject> {
+  return uploadToBucket(file, projectId, DOCUMENTS_STORAGE_BUCKET, "document");
+}
+
+/** Best-effort removal of a previously uploaded document object. */
+export function removeProjectDocument(path: string): Promise<void> {
+  return removeFromBucket(DOCUMENTS_STORAGE_BUCKET, path);
 }
