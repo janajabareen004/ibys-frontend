@@ -1,11 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import * as React from "react";
+import { createFileRoute } from "@tanstack/react-router";
 import { RoleGuard } from "@/components/common/RoleGuard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
-import { UploadDropzone } from "@/components/company/UploadDropzone";
-import { SectionCard } from "@/components/manager/SectionCard";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PhotosManager } from "@/components/manager/PhotosManager";
+import { DocumentsManager } from "@/components/manager/DocumentsManager";
+import { Image, FileText } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/manager/upload")({
   head: () => ({
@@ -19,9 +20,7 @@ export const Route = createFileRoute("/_authenticated/manager/upload")({
 
 function Page() {
   const { t } = useI18n();
-  const onFiles = (files: FileList) => {
-    toast.success(t("manager.pm.toasts.uploaded"), { description: `${files.length} file(s)` });
-  };
+  const [tab, setTab] = React.useState<"photos" | "documents">("photos");
 
   return (
     <RoleGuard allow="PROJECT_MANAGER">
@@ -30,30 +29,25 @@ function Page() {
         description={t("manager.upload.description")}
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SectionCard
-          title={t("nav.uploadPhotos")}
-          description={t("manager.upload.photoHint")}
-          action={
-            <Button asChild size="sm" variant="ghost">
-              <Link to="/manager/photos">{t("common.viewAll")}</Link>
-            </Button>
-          }
-        >
-          <UploadDropzone label={t("manager.upload.dropPhotos")} onFiles={onFiles} />
-        </SectionCard>
-        <SectionCard
-          title={t("nav.uploadDocuments")}
-          description={t("manager.upload.documentHint")}
-          action={
-            <Button asChild size="sm" variant="ghost">
-              <Link to="/manager/documents">{t("common.viewAll")}</Link>
-            </Button>
-          }
-        >
-          <UploadDropzone label={t("manager.upload.dropDocuments")} onFiles={onFiles} />
-        </SectionCard>
-      </div>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "photos" | "documents")}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="photos" className="gap-1.5">
+            <Image className="h-4 w-4" aria-hidden />
+            {t("nav.photos")}
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="gap-1.5">
+            <FileText className="h-4 w-4" aria-hidden />
+            {t("nav.documents")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="photos">
+          <PhotosManager showHeader={false} />
+        </TabsContent>
+        <TabsContent value="documents">
+          <DocumentsManager showHeader={false} />
+        </TabsContent>
+      </Tabs>
     </RoleGuard>
   );
 }

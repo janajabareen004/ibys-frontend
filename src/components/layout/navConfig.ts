@@ -59,8 +59,6 @@ export const NAV_SECTIONS_BY_ROLE: Record<Role, NavSection[]> = {
         { to: "/manager/projects", labelKey: "nav.projects", icon: FolderKanban },
         { to: "/manager/tasks", labelKey: "nav.tasks", icon: ClipboardList },
         { to: "/manager/stages", labelKey: "nav.stages", icon: Layers },
-        { to: "/manager/photos", labelKey: "nav.uploadPhotos", icon: Image },
-        { to: "/manager/documents", labelKey: "nav.uploadDocuments", icon: FileText },
         { to: "/manager/upload", labelKey: "manager.nav.upload", icon: UploadCloud },
         { to: "/manager/meetings", labelKey: "nav.meetings", icon: CalendarClock },
         { to: "/manager/requests", labelKey: "nav.tenantRequests", icon: Inbox },
