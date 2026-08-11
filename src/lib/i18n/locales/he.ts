@@ -532,6 +532,9 @@ const he: Dictionary = {
       minutes: "דק'",
       new: "פגישה חדשה",
       empty: "אין פגישות בתצוגה זו.",
+      notesTitle: "הערות הפגישה",
+      noNotes: "אין הערות פגישה זמינות.",
+      approvedToast: "הפגישה אושרה",
     },
     reports: {
       title: "דוחות",

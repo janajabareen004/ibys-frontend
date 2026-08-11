@@ -17,6 +17,7 @@ type Props = {
   projects: ManagedProject[];
   defaultProjectId?: string;
   onSaved?: () => void;
+  initialStatus?: ManagedMeeting["status"];
 };
 
 const STATUSES: ManagedMeeting["status"][] = ["upcoming", "today", "past", "cancelled", "rescheduled"];
@@ -28,7 +29,7 @@ function toLocalInput(iso?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultProjectId, onSaved }: Props) {
+export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultProjectId, onSaved, initialStatus }: Props) {
   const { t } = useI18n();
   const isEdit = !!meeting;
   const [saving, setSaving] = React.useState(false);
@@ -52,9 +53,9 @@ export function MeetingDialog({ open, onOpenChange, meeting, projects, defaultPr
     setLocation(meeting?.location ?? "Video call");
     setAgenda(meeting?.agenda ?? "");
     setParticipants((meeting?.participants ?? []).join(", "));
-    setStatus(meeting?.status ?? "upcoming");
+    setStatus(initialStatus ?? meeting?.status ?? "upcoming");
     setNotes(meeting?.notes ?? "");
-  }, [open, meeting, defaultProjectId, projects]);
+  }, [open, meeting, defaultProjectId, projects, initialStatus]);
 
   const submit = async () => {
     if (saving) return;

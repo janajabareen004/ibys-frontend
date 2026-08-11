@@ -451,6 +451,18 @@ async function deleteManagerMeeting(id: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Approve a meeting via a status-only PUT. "APPROVED" is the canonical status
+ * used by the app's meeting-approval concept (see the meeting_approved activity
+ * event); the backend update accepts a partial body and persists just status.
+ */
+async function approveManagerMeeting(id: string): Promise<ManagedMeeting> {
+  const row = await apiClient.put<BackendMeetingRow>(`/meetings/${id}`, {
+    status: "APPROVED",
+  });
+  return mapManagedMeeting(row);
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: update a tenant request's status
 //
@@ -531,6 +543,10 @@ export const managerMutations = {
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.deleteMeeting(id))
       : deleteManagerMeeting(id),
+  approveMeeting: (id: string) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.updateMeeting(id, {}))
+      : approveManagerMeeting(id),
   updateRequest: mockManagerService.updateRequest,
   /**
    * Persist a tenant request's status. In real mode this hits the backend

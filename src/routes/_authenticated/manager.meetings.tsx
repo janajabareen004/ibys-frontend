@@ -30,6 +30,7 @@ function Page() {
   const { data: projects } = useManagerProjects();
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ManagedMeeting | null>(null);
+  const [rescheduling, setRescheduling] = React.useState(false);
   const projectName = (id: string) => projects?.find((p) => p.id === id)?.name ?? "";
 
   const filter = (status: ManagedMeeting["status"]) => (data ?? []).filter((m) => m.status === status);
@@ -41,8 +42,9 @@ function Page() {
     { key: "rescheduled", labelKey: "manager.meetings.tabs.rescheduled" },
   ];
 
-  const openNew = () => { setEditing(null); setOpen(true); };
-  const openEdit = (m: ManagedMeeting) => { setEditing(m); setOpen(true); };
+  const openNew = () => { setEditing(null); setRescheduling(false); setOpen(true); };
+  const openEdit = (m: ManagedMeeting) => { setEditing(m); setRescheduling(false); setOpen(true); };
+  const openReschedule = (m: ManagedMeeting) => { setEditing(m); setRescheduling(true); setOpen(true); };
   const remove = async (m: ManagedMeeting) => {
     if (!window.confirm(t("manager.pm.meetingForm.delete") + "?")) return;
     try {
@@ -72,7 +74,7 @@ function Page() {
                 <div className="grid gap-3 md:grid-cols-2">
                   {filter(tab.key).map((m) => (
                     <div key={m.id} className="group relative">
-                      <MeetingCard meeting={m} projectName={projectName(m.projectId)} />
+                      <MeetingCard meeting={m} projectName={projectName(m.projectId)} onReschedule={openReschedule} onChanged={refetch} />
                       <div className="pointer-events-none absolute end-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                         <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => openEdit(m)} aria-label={t("manager.pm.common.edit")}><Pencil className="h-3.5 w-3.5" /></Button>
                         <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => remove(m)} aria-label={t("manager.pm.common.delete")}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -86,7 +88,7 @@ function Page() {
         ))}
       </Tabs>
 
-      <MeetingDialog open={open} onOpenChange={setOpen} meeting={editing} projects={projects ?? []} onSaved={refetch} />
+      <MeetingDialog open={open} onOpenChange={setOpen} meeting={editing} projects={projects ?? []} onSaved={refetch} initialStatus={rescheduling ? "rescheduled" : undefined} />
     </RoleGuard>
   );
 }

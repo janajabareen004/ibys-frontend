@@ -532,6 +532,9 @@ const ar: Dictionary = {
       minutes: "دقيقة",
       new: "اجتماع جديد",
       empty: "لا توجد اجتماعات في هذا العرض.",
+      notesTitle: "ملاحظات الاجتماع",
+      noNotes: "لا توجد ملاحظات اجتماع متاحة.",
+      approvedToast: "تم اعتماد الاجتماع",
     },
     reports: {
       title: "التقارير",

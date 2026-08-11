@@ -537,6 +537,9 @@ const en = {
       minutes: "min",
       new: "New meeting",
       empty: "No meetings in this view.",
+      notesTitle: "Meeting notes",
+      noNotes: "No meeting notes available.",
+      approvedToast: "Meeting approved",
     },
     reports: {
       title: "Reports",
