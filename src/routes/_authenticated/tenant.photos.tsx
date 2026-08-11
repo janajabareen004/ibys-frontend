@@ -35,6 +35,14 @@ function Page() {
 
   const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
 
+  // Guard date formatting: an empty/invalid date must never throw and blank the
+  // whole grid, so newly uploaded photos always render even without a valid date.
+  const safeFormatDate = (value: string, opts?: Intl.DateTimeFormatOptions) => {
+    if (!value) return "";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? "" : formatDate(d, opts);
+  };
+
   // A photo's `stageId` carries the backend image `stage` value, which may be
   // either the canonical stage id or the stage's display name. Match against both
   // so filtering works regardless of which representation the backend sends.
@@ -102,7 +110,7 @@ function Page() {
                     {stageName && <Badge variant="outline" className="shrink-0 text-[10px]">{t(stageName.nameKey)}</Badge>}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {t("tenant.photos.uploadedBy")} <strong className="text-foreground">{p.uploadedBy}</strong> {t("tenant.photos.on")} {formatDate(p.uploadedAt)}
+                    {t("tenant.photos.uploadedBy")} <strong className="text-foreground">{p.uploadedBy}</strong> {t("tenant.photos.on")} {safeFormatDate(p.uploadedAt)}
                   </div>
                 </div>
               </button>
@@ -120,7 +128,7 @@ function Page() {
                 <div>
                   <div className="text-base font-semibold">{(() => { const s = stages?.find((x) => x.id === preview.stageId); const idx = preview.id.split("-p")[1] ?? ""; return s ? `${t(s.nameKey)} #${idx}` : preview.title; })()}</div>
                   <div className="text-xs text-muted-foreground">
-                    {t("tenant.photos.uploadedBy")} {preview.uploadedBy} · {formatDate(preview.uploadedAt, { dateStyle: "long" })}
+                    {t("tenant.photos.uploadedBy")} {preview.uploadedBy} · {safeFormatDate(preview.uploadedAt, { dateStyle: "long" })}
                   </div>
                 </div>
                 <Button size="icon" variant="ghost" onClick={() => setPreview(null)}><X className="h-4 w-4" /></Button>

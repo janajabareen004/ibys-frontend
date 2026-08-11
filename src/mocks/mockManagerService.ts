@@ -166,6 +166,7 @@ export type ManagedPhoto = {
   uploadedBy: string;
   uploadedAt: string;
   color: string; // seed for the placeholder swatch
+  url?: string; // real image URL; falls back to the placeholder swatch when absent
 };
 
 export type ManagedDocumentCategory = "contract" | "permit" | "drawing" | "report" | "invoice";

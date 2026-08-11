@@ -366,7 +366,8 @@ function mapPhoto(row: ImageRow): Photo {
     id: String(row.image_id),
     stageId: (row.stage ?? "") as StageId,
     title: row.title ?? "Project photo",
-    url: row.image_url ?? row.image_path ?? "",
+    // `||` (not `??`) so an empty-string image_url still falls back to image_path.
+    url: row.image_url || row.image_path || "",
     uploadedAt: row.upload_date ?? "",
     uploadedBy: "",
   };

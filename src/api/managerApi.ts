@@ -524,6 +524,8 @@ function mapManagedPhoto(row: BackendImageRow): ManagedPhoto {
     uploadedBy: "",
     uploadedAt: safeDate(row.upload_date),
     color: swatchFor(String(row.image_id)),
+    // Prefer the stored public URL; `||` (not `??`) so empty strings fall back.
+    url: row.image_url || row.image_path || undefined,
   };
 }
 

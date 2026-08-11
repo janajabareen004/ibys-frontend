@@ -89,8 +89,14 @@ function Page() {
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {filtered.map((photo) => (
             <Card key={photo.id} className="overflow-hidden">
-              <div className="relative aspect-[4/3] w-full" style={{ background: `linear-gradient(135deg, ${photo.color}, ${photo.color}bb)` }}>
-                <ImageIcon className="absolute inset-0 m-auto h-10 w-10 text-white/70" aria-hidden />
+              <div className="relative aspect-[4/3] w-full overflow-hidden">
+                {photo.url ? (
+                  <img src={photo.url} alt={photo.title} loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${photo.color}, ${photo.color}bb)` }}>
+                    <ImageIcon className="absolute inset-0 m-auto h-10 w-10 text-white/70" aria-hidden />
+                  </div>
+                )}
                 <Badge className="absolute end-2 top-2 rounded-full bg-black/40 text-white backdrop-blur">{t(`tenant.timeline.stages.${photo.stageKey}`)}</Badge>
               </div>
               <div className="space-y-1 p-3">
