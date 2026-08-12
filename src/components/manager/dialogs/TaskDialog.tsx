@@ -22,8 +22,11 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   task?: ManagedTask | null;
   projects: ManagedProject[];
-  employees: Employee[];
+  // Kept for backward compatibility; there is no real team backend in Phase 1,
+  // so the assignee is captured as free text instead of an employee dropdown.
+  employees?: Employee[];
   defaultProjectId?: string;
+  onSaved?: () => void;
 };
 
 const STATUSES: TaskStatus[] = ["not_started", "in_progress", "waiting", "completed", "blocked"];
@@ -37,7 +40,7 @@ function toDateInput(iso?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function TaskDialog({ open, onOpenChange, task, projects, employees, defaultProjectId }: Props) {
+export function TaskDialog({ open, onOpenChange, task, projects, defaultProjectId, onSaved }: Props) {
   const { t } = useI18n();
   const isEdit = !!task;
 
@@ -51,23 +54,26 @@ export function TaskDialog({ open, onOpenChange, task, projects, employees, defa
   const [status, setStatus] = React.useState<TaskStatus>("not_started");
   const [progress, setProgress] = React.useState(0);
   const [tags, setTags] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setTitle(task?.title ?? "");
     setDescription(task?.description ?? "");
     setProjectId(task?.projectId ?? defaultProjectId ?? projects[0]?.id ?? "");
-    setAssignedTo(task?.assignedTo ?? employees[0]?.id ?? "");
+    setAssignedTo(task?.assignedTo ?? "");
     setStageKey((task?.stageKey ?? "none") as ProjectStageKey | "none");
     setDueDate(toDateInput(task?.dueDate) || toDateInput(new Date(Date.now() + 7 * 86400000).toISOString()));
     setPriority(task?.priority ?? "medium");
     setStatus(task?.status ?? "not_started");
     setProgress(task?.progress ?? 0);
     setTags((task?.tags ?? []).join(", "));
-  }, [open, task, defaultProjectId, projects, employees]);
+  }, [open, task, defaultProjectId, projects]);
 
-  const submit = () => {
-    if (!title.trim() || !projectId || !assignedTo) {
+  const submit = async () => {
+    if (saving) return;
+    // Title + project are required; assignee is optional (no team backend yet).
+    if (!title.trim() || !projectId) {
       toast.error(t("common.error"));
       return;
     }
@@ -75,7 +81,7 @@ export function TaskDialog({ open, onOpenChange, task, projects, employees, defa
       title: title.trim(),
       description: description.trim(),
       projectId,
-      assignedTo,
+      assignedTo: assignedTo.trim(),
       stageKey: stageKey === "none" ? undefined : stageKey,
       dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
       priority,
@@ -83,22 +89,38 @@ export function TaskDialog({ open, onOpenChange, task, projects, employees, defa
       progress,
       tags: tags.split(",").map((s) => s.trim()).filter(Boolean),
     };
-    if (isEdit && task) {
-      managerActions.updateTask(task.id, payload);
-      toast.success(t("manager.pm.toasts.updated"));
-    } else {
-      managerActions.createTask(payload);
-      toast.success(t("manager.pm.toasts.created"));
+    setSaving(true);
+    try {
+      if (isEdit && task) {
+        await managerActions.updateTask(task.id, payload);
+        toast.success(t("manager.pm.toasts.updated"));
+      } else {
+        await managerActions.createTask(payload);
+        toast.success(t("manager.pm.toasts.created"));
+      }
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
     }
-    onOpenChange(false);
   };
 
-  const remove = () => {
-    if (!task) return;
+  const remove = async () => {
+    if (!task || saving) return;
     if (!window.confirm(t("manager.pm.taskForm.confirmDelete"))) return;
-    managerActions.deleteTask(task.id);
-    toast.success(t("manager.pm.toasts.deleted"));
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await managerActions.deleteTask(task.id);
+      toast.success(t("manager.pm.toasts.deleted"));
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -128,12 +150,7 @@ export function TaskDialog({ open, onOpenChange, task, projects, employees, defa
             </div>
             <div className="grid gap-1.5">
               <Label>{t("manager.pm.taskForm.assignee")}</Label>
-              <Select value={assignedTo} onValueChange={setAssignedTo}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Input value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} maxLength={120} />
             </div>
             <div className="grid gap-1.5">
               <Label>{t("manager.pm.taskForm.stage")}</Label>
@@ -181,11 +198,11 @@ export function TaskDialog({ open, onOpenChange, task, projects, employees, defa
         </div>
         <DialogFooter className="gap-2 sm:justify-between">
           {isEdit ? (
-            <Button variant="destructive" onClick={remove}>{t("manager.pm.taskForm.delete")}</Button>
+            <Button variant="destructive" onClick={remove} disabled={saving}>{t("manager.pm.taskForm.delete")}</Button>
           ) : <span />}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("manager.pm.common.cancel")}</Button>
-            <Button onClick={submit}>{t("manager.pm.common.save")}</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("manager.pm.common.cancel")}</Button>
+            <Button onClick={submit} disabled={saving}>{t("manager.pm.common.save")}</Button>
           </div>
         </DialogFooter>
       </DialogContent>

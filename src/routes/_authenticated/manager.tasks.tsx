@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_authenticated/manager/tasks")({
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data: tasks, loading } = useManagerTasks();
+  const { data: tasks, loading, refetch } = useManagerTasks();
   const { data: employees } = useManagerEmployees();
   const { data: projects } = useManagerProjects();
 
@@ -42,7 +42,9 @@ function Page() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ManagedTask | null>(null);
 
-  const empName = (id: string) => employees?.find((e) => e.id === id)?.name ?? "";
+  // assigned_to is free text in Phase 1 (no team backend); fall back to the raw
+  // stored value when it doesn't match a known employee id.
+  const empName = (id: string) => employees?.find((e) => e.id === id)?.name ?? id;
   const projName = (id: string) => projects?.find((p) => p.id === id)?.name ?? "";
 
   const filtered = React.useMemo(() => {
@@ -58,10 +60,15 @@ function Page() {
 
   const openNew = () => { setEditing(null); setDialogOpen(true); };
   const openEdit = (task: ManagedTask) => { setEditing(task); setDialogOpen(true); };
-  const remove = (task: ManagedTask) => {
+  const remove = async (task: ManagedTask) => {
     if (!window.confirm(t("manager.pm.taskForm.confirmDelete"))) return;
-    managerActions.deleteTask(task.id);
-    toast.success(t("manager.pm.toasts.deleted"));
+    try {
+      await managerActions.deleteTask(task.id);
+      toast.success(t("manager.pm.toasts.deleted"));
+      refetch();
+    } catch {
+      toast.error(t("common.error"));
+    }
   };
 
   return (
@@ -172,6 +179,7 @@ function Page() {
         task={editing}
         projects={projects ?? []}
         employees={employees ?? []}
+        onSaved={refetch}
       />
     </RoleGuard>
   );

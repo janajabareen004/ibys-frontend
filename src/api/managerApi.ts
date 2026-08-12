@@ -11,6 +11,8 @@ import {
   type ManagedProject,
   type ManagedStage,
   type ManagedTask,
+  type TaskStatus,
+  type TaskPriority,
   type ManagedRequest,
   type ManagedMeeting,
   type ManagedNotification,
@@ -869,6 +871,146 @@ async function updateManagerRequestStatus(
   return mapManagedRequest(row, "", "");
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: manager tasks (backed by the public.tasks table)
+//
+// GET /api/tasks (all) — each row carries a project_id — GET /api/tasks/<id>,
+// POST /api/projects/<id>/tasks, PUT|PATCH /api/tasks/<id>, DELETE /api/tasks/<id>.
+// Listing is scoped to the manager's owned projects (projects.project_manager_id
+// === user_id). Unsupported legacy fields (tags/subtasks/attachments/comments/
+// activity) are defaulted to empty arrays — never fabricated.
+// ---------------------------------------------------------------------------
+
+type BackendTaskRow = {
+  task_id: string | number;
+  project_id: string | number | null;
+  title: string | null;
+  description: string | null;
+  assigned_to: string | null;
+  stage: string | null;
+  due_date: string | null;
+  priority: string | null;
+  status: string | null;
+  progress_percent: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type TaskWriteInput = {
+  title: string;
+  projectId: string;
+  description?: string;
+  assignedTo?: string;
+  stageKey?: ProjectStageKey;
+  dueDate?: string;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  progress?: number;
+  tags?: string[];
+};
+
+const TASK_PRIORITIES: TaskPriority[] = ["low", "medium", "high", "critical"];
+
+/** Map a free-form backend status to the frontend TaskStatus enum. */
+function normalizeTaskStatus(value: string | null | undefined): TaskStatus {
+  const v = (value ?? "").trim().toLowerCase();
+  if (["in_progress", "current", "active", "started", "ongoing"].includes(v)) return "in_progress";
+  if (["waiting", "on_hold", "hold", "paused"].includes(v)) return "waiting";
+  if (["completed", "complete", "done", "finished", "closed"].includes(v)) return "completed";
+  if (["blocked", "stuck"].includes(v)) return "blocked";
+  // "pending"/"not_started"/"todo"/unknown all collapse to the safe default.
+  return "not_started";
+}
+
+/** Map a free-form backend priority to the frontend TaskPriority enum. */
+function normalizeTaskPriority(value: string | null | undefined): TaskPriority {
+  const v = (value ?? "").trim().toLowerCase();
+  return (TASK_PRIORITIES as string[]).includes(v) ? (v as TaskPriority) : "medium";
+}
+
+/** Map a stored stage text to a canonical stage key, or undefined if unknown. */
+function toTaskStageKey(stage: string | null | undefined): ProjectStageKey | undefined {
+  const v = (stage ?? "").trim().toLowerCase();
+  return (CANONICAL_STAGE_KEYS as string[]).includes(v) ? (v as ProjectStageKey) : undefined;
+}
+
+function mapManagedTask(row: BackendTaskRow): ManagedTask {
+  return {
+    id: String(row.task_id),
+    title: row.title ?? "",
+    description: row.description ?? "",
+    assignedTo: row.assigned_to ?? "",
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    stageKey: toTaskStageKey(row.stage),
+    dueDate: safeDate(row.due_date),
+    priority: normalizeTaskPriority(row.priority),
+    status: normalizeTaskStatus(row.status),
+    progress: typeof row.progress_percent === "number" ? row.progress_percent : 0,
+    // No backend columns for these yet (Phase 1) — default, never fabricate.
+    tags: [],
+    subtasks: [],
+    attachments: [],
+    comments: [],
+    activity: [],
+    createdAt: safeDate(row.created_at),
+  };
+}
+
+/** Build a backend task body from the UI input, sending only provided fields. */
+function toTaskBody(input: Partial<TaskWriteInput>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.title !== undefined) body.title = input.title;
+  if (input.description !== undefined) body.description = input.description;
+  if (input.assignedTo !== undefined) body.assigned_to = input.assignedTo;
+  if (input.stageKey !== undefined) body.stage = input.stageKey ?? null;
+  if (input.dueDate !== undefined) body.due_date = input.dueDate ? String(input.dueDate).slice(0, 10) : null;
+  if (input.priority !== undefined) body.priority = input.priority;
+  if (input.status !== undefined) body.status = input.status;
+  if (typeof input.progress === "number") {
+    body.progress_percent = Math.max(0, Math.min(100, Math.round(input.progress)));
+  }
+  return body;
+}
+
+async function fetchManagerTasks(): Promise<ManagedTask[]> {
+  const owned = await getOwnedProjectIds();
+  if (owned.size === 0) return [];
+  let rows: BackendTaskRow[];
+  try {
+    const res = await apiClient.get<BackendTaskRow[]>("/tasks");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return rows
+    .filter((r) => r.project_id != null && owned.has(String(r.project_id)))
+    .map(mapManagedTask);
+}
+
+async function fetchManagerTask(id: string): Promise<ManagedTask | null> {
+  try {
+    const row = await apiClient.get<BackendTaskRow>(`/tasks/${id}`);
+    return row ? mapManagedTask(row) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function createManagerTask(input: TaskWriteInput): Promise<ManagedTask> {
+  const row = await apiClient.post<BackendTaskRow>(`/projects/${input.projectId}/tasks`, toTaskBody(input));
+  return mapManagedTask(row);
+}
+
+async function updateManagerTask(id: string, patch: Partial<TaskWriteInput>): Promise<ManagedTask> {
+  const row = await apiClient.put<BackendTaskRow>(`/tasks/${id}`, toTaskBody(patch));
+  return mapManagedTask(row);
+}
+
+async function deleteManagerTask(id: string): Promise<boolean> {
+  await apiClient.delete(`/tasks/${id}`);
+  return true;
+}
+
 export const managerApi = {
   getProjects: () =>
     USE_MOCK_API ? mockManagerService.getProjects() : fetchManagerProjects(),
@@ -881,9 +1023,9 @@ export const managerApi = {
   getAllStages: () =>
     USE_MOCK_API ? mockManagerService.getAllStages() : fetchManagerStages(),
   getTasks: () =>
-    USE_MOCK_API ? mockManagerService.getTasks() : apiClient.get<ManagedTask[]>("/manager/tasks"),
+    USE_MOCK_API ? mockManagerService.getTasks() : fetchManagerTasks(),
   getTask: (id: string) =>
-    USE_MOCK_API ? mockManagerService.getTask(id) : apiClient.get<ManagedTask | null>(`/manager/tasks/${id}`),
+    USE_MOCK_API ? mockManagerService.getTask(id) : fetchManagerTask(id),
   getRequests: () =>
     USE_MOCK_API ? mockManagerService.getRequests() : fetchManagerRequests(),
   getMeetings: () =>
@@ -912,9 +1054,19 @@ export const managerApi = {
  * connected in Phase 2.
  */
 export const managerMutations = {
-  createTask: mockManagerService.createTask,
-  updateTask: mockManagerService.updateTask,
-  deleteTask: mockManagerService.deleteTask,
+  createTask: (input: TaskWriteInput) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.createTask({ ...input, assignedTo: input.assignedTo ?? "" }))
+      : createManagerTask(input),
+  updateTask: (id: string, patch: Partial<TaskWriteInput>) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.updateTask(id, patch))
+      : updateManagerTask(id, patch),
+  deleteTask: (id: string) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.deleteTask(id))
+      : deleteManagerTask(id),
+  // Subtasks/comments are not part of Phase 1; they remain mock-only.
   addTaskComment: mockManagerService.addTaskComment,
   toggleSubtask: mockManagerService.toggleSubtask,
   updateStage: (id: string, patch: StagePatch) =>
