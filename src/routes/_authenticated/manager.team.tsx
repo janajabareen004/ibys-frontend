@@ -5,12 +5,14 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useManagerEmployees, useManagerProjects } from "@/hooks/useManagerData";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
-import { Search, Mail, Phone, Clock } from "lucide-react";
+import { TeamMemberDialog } from "@/components/manager/dialogs/TeamMemberDialog";
+import { Search, Mail, Phone, Clock, Plus } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/manager/team")({
   head: () => ({
@@ -24,9 +26,10 @@ export const Route = createFileRoute("/_authenticated/manager/team")({
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data: employees, loading } = useManagerEmployees();
+  const { data: employees, loading, refetch } = useManagerEmployees();
   const { data: projects } = useManagerProjects();
   const [q, setQ] = React.useState("");
+  const [addOpen, setAddOpen] = React.useState(false);
 
   const projectName = (id: string) => projects?.find((p) => p.id === id)?.name ?? id;
   const filtered = (employees ?? []).filter((e) => q ? [e.name, e.role, e.email].join(" ").toLowerCase().includes(q.toLowerCase()) : true);
@@ -35,7 +38,11 @@ function Page() {
 
   return (
     <RoleGuard allow="PROJECT_MANAGER">
-      <PageHeader title={t("manager.team.title")} description={t("manager.team.description")} />
+      <PageHeader
+        title={t("manager.team.title")}
+        description={t("manager.team.description")}
+        actions={<Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" />{t("manager.team.addMember")}</Button>}
+      />
 
       <div className="mb-4 relative">
         <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" aria-hidden />
@@ -72,6 +79,13 @@ function Page() {
           ))}
         </div>
       )}
+
+      <TeamMemberDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        projects={projects ?? []}
+        onSaved={refetch}
+      />
     </RoleGuard>
   );
 }

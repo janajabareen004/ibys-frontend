@@ -504,6 +504,25 @@ export const mockManagerService = {
     return t;
   },
 
+  // ---- team mutations
+  addEmployee(input: { projectId: string; name: string; role?: string; email?: string; phone?: string; availability?: Employee["availability"] }) {
+    const employee: Employee = {
+      id: uid("e-"),
+      name: input.name,
+      role: input.role ?? "",
+      email: input.email ?? "",
+      phone: input.phone ?? "",
+      avatarSeed: input.name,
+      workload: 0,
+      availability: input.availability ?? "available",
+      projectIds: [input.projectId],
+      lastActive: nowIso(),
+    };
+    EMPLOYEES.unshift(employee);
+    emit();
+    return employee;
+  },
+
   // ---- stage mutations
   updateStage(id: string, patch: Partial<Pick<ManagedStage, "progress" | "status" | "notes" | "estimatedCompletion" | "actualCompletion">>) {
     const s = STAGES.find((s) => s.id === id);

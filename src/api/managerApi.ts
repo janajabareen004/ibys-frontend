@@ -1093,6 +1093,36 @@ async function fetchManagerTeam(): Promise<Employee[]> {
   return members.map((r) => mapEmployee(r, computeWorkload(r.name, tasks)));
 }
 
+type TeamMemberWriteInput = {
+  projectId: string;
+  name: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  availability?: Employee["availability"];
+};
+
+/**
+ * Create a team member under a project via POST /api/projects/<id>/team.
+ * Ownership is enforced: creation is rejected client-side for a project the
+ * authenticated manager does not own (the backend also gates by role).
+ * A new member has no assigned tasks yet, so workload starts at 0.
+ */
+async function createManagerTeamMember(input: TeamMemberWriteInput): Promise<Employee> {
+  const owned = await getOwnedProjectIds();
+  if (!owned.has(String(input.projectId))) {
+    throw new Error("You can only add members to your own projects.");
+  }
+  const row = await apiClient.post<BackendTeamMemberRow>(`/projects/${input.projectId}/team`, {
+    name: input.name,
+    role: input.role,
+    email: input.email,
+    phone: input.phone,
+    availability: input.availability,
+  });
+  return mapEmployee(row, 0);
+}
+
 async function fetchManagerEmployee(id: string): Promise<Employee | null> {
   let row: BackendTeamMemberRow | null;
   try {
@@ -1168,6 +1198,10 @@ export const managerMutations = {
   // Subtasks/comments are not part of Phase 1; they remain mock-only.
   addTaskComment: mockManagerService.addTaskComment,
   toggleSubtask: mockManagerService.toggleSubtask,
+  createTeamMember: (input: TeamMemberWriteInput) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.addEmployee(input))
+      : createManagerTeamMember(input),
   updateStage: (id: string, patch: StagePatch) =>
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.updateStage(id, patch))
