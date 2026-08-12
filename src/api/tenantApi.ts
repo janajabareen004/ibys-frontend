@@ -96,6 +96,7 @@ type DocumentRow = {
   upload_date: string | null;
   project_id: string | null;
   file_url: string | null;
+  category: string | null;
 };
 
 type MeetingRow = {
@@ -373,12 +374,21 @@ function mapPhoto(row: ImageRow): Photo {
   };
 }
 
+const DOC_CATEGORIES: Doc["category"][] = ["contract", "permit", "drawing", "report", "invoice"];
+
+/** Normalize the backend document category to a valid enum (defaults to report). */
+function mapDocCategory(value: string | null | undefined): Doc["category"] {
+  const s = (value ?? "").trim().toLowerCase();
+  return (DOC_CATEGORIES as string[]).includes(s) ? (s as Doc["category"]) : "report";
+}
+
 function mapDoc(row: DocumentRow): Doc {
   return {
     id: row.document_id,
     name: row.file_name ?? "",
-    // Backend has no document category; default to a valid enum value.
-    category: "report",
+    // Use the backend category when present (managers now set it); fall back to
+    // a valid enum value for legacy rows that have an empty category column.
+    category: mapDocCategory(row.category),
     updatedAt: safeDate(row.upload_date),
     size: "",
     url: row.file_url ?? "",
