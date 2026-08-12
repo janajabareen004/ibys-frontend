@@ -1011,6 +1011,105 @@ async function deleteManagerTask(id: string): Promise<boolean> {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: manager team members (backed by the public.team_members table)
+//
+// GET /api/team (all) — each row carries a project_id — GET /api/team/<id>,
+// POST /api/projects/<id>/team, PUT|PATCH /api/team/<id>, DELETE /api/team/<id>.
+// Listing is scoped to the manager's owned projects (projects.project_manager_id
+// === user_id). Workload has NO backend column: it is a Phase-1 approximation
+// computed from real tasks (see computeWorkload).
+// ---------------------------------------------------------------------------
+
+type BackendTeamMemberRow = {
+  member_id: string | number;
+  project_id: string | number | null;
+  name: string | null;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  availability: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/** Map a free-form backend availability to the frontend Employee availability. */
+function normalizeAvailability(value: string | null | undefined): Employee["availability"] {
+  const v = (value ?? "").trim().toLowerCase();
+  if (v === "busy") return "busy";
+  if (v === "off") return "off";
+  return "available";
+}
+
+/**
+ * Phase-1 workload approximation: count the member's active (non-completed)
+ * assigned tasks by matching tasks.assigned_to text against the member name
+ * (case-insensitive, trimmed), then scale to a percentage and clamp to 0-100.
+ * There is no stored workload column and no fabricated value — 0 when there are
+ * no matching tasks. This intentionally does not touch the tasks schema.
+ */
+function computeWorkload(name: string | null | undefined, tasks: ManagedTask[]): number {
+  const key = (name ?? "").trim().toLowerCase();
+  if (!key) return 0;
+  const active = tasks.filter(
+    (t) => (t.assignedTo ?? "").trim().toLowerCase() === key && t.status !== "completed",
+  ).length;
+  return Math.max(0, Math.min(100, active * 25));
+}
+
+function mapEmployee(row: BackendTeamMemberRow, workload = 0): Employee {
+  return {
+    id: String(row.member_id),
+    name: row.name ?? "",
+    role: row.role ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    avatarSeed: row.name ?? String(row.member_id),
+    workload,
+    availability: normalizeAvailability(row.availability),
+    projectIds: row.project_id != null ? [String(row.project_id)] : [],
+    lastActive: safeDate(row.updated_at ?? row.created_at),
+  };
+}
+
+async function fetchManagerTeam(): Promise<Employee[]> {
+  const owned = await getOwnedProjectIds();
+  if (owned.size === 0) return [];
+  let rows: BackendTeamMemberRow[];
+  try {
+    const res = await apiClient.get<BackendTeamMemberRow[]>("/team");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  const members = rows.filter((r) => r.project_id != null && owned.has(String(r.project_id)));
+  // Reuse the owner-scoped task list so workload reflects the manager's real tasks.
+  let tasks: ManagedTask[] = [];
+  try {
+    tasks = await fetchManagerTasks();
+  } catch {
+    tasks = [];
+  }
+  return members.map((r) => mapEmployee(r, computeWorkload(r.name, tasks)));
+}
+
+async function fetchManagerEmployee(id: string): Promise<Employee | null> {
+  let row: BackendTeamMemberRow | null;
+  try {
+    row = await apiClient.get<BackendTeamMemberRow>(`/team/${id}`);
+  } catch {
+    return null;
+  }
+  if (!row) return null;
+  let tasks: ManagedTask[] = [];
+  try {
+    tasks = await fetchManagerTasks();
+  } catch {
+    tasks = [];
+  }
+  return mapEmployee(row, computeWorkload(row.name, tasks));
+}
+
 export const managerApi = {
   getProjects: () =>
     USE_MOCK_API ? mockManagerService.getProjects() : fetchManagerProjects(),
@@ -1033,9 +1132,9 @@ export const managerApi = {
   getNotifications: () =>
     USE_MOCK_API ? mockManagerService.getNotifications() : apiClient.get<ManagedNotification[]>("/manager/notifications"),
   getEmployees: () =>
-    USE_MOCK_API ? mockManagerService.getEmployees() : apiClient.get<Employee[]>("/manager/team"),
+    USE_MOCK_API ? mockManagerService.getEmployees() : fetchManagerTeam(),
   getEmployee: (id: string) =>
-    USE_MOCK_API ? mockManagerService.getEmployee(id) : apiClient.get<Employee | null>(`/manager/team/${id}`),
+    USE_MOCK_API ? mockManagerService.getEmployee(id) : fetchManagerEmployee(id),
   getActivity: () =>
     USE_MOCK_API ? mockManagerService.getActivity() : apiClient.get<ActivityEvent[]>("/manager/activity"),
   getPhotos: () =>
