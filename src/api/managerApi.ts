@@ -695,6 +695,7 @@ type BackendProgressRow = {
   start_date: string | null;
   end_date: string | null;
   status: string | null;
+  progress_percent?: number | null;
 };
 
 // Canonical stage keys and the real-world construction sequence — identical to
@@ -749,7 +750,12 @@ function mapManagedStage(row: BackendProgressRow, key: ProjectStageKey): Managed
     projectId: row.project_id != null ? String(row.project_id) : "",
     key,
     status,
-    progress: stageProgressForStatus(status),
+    // Prefer the real persisted percentage; fall back to the status-derived
+    // value only for legacy rows where progress_percent is null.
+    progress:
+      typeof row.progress_percent === "number"
+        ? row.progress_percent
+        : stageProgressForStatus(status),
     // The progress table has no columns for these; default them safely.
     responsibleCompany: "",
     estimatedCompletion: safeDate(row.end_date),
@@ -825,13 +831,16 @@ type StagePatch = Partial<
 
 /**
  * Persist a stage update to its progress row. Only columns the progress table
- * actually has are sent: status, start_date, end_date. progress %, notes and
- * responsibleCompany have no columns and are intentionally NOT persisted.
+ * actually has are sent: status, start_date, end_date, progress_percent. notes
+ * and responsibleCompany have no columns and are intentionally NOT persisted.
  * Dates are sent as YYYY-MM-DD (the backend parses with date.fromisoformat).
  */
 async function updateManagerStage(progressId: string, patch: StagePatch): Promise<void> {
   const body: Record<string, unknown> = {};
   if (patch.status) body.status = patch.status;
+  if (typeof patch.progress === "number") {
+    body.progress_percent = Math.max(0, Math.min(100, Math.round(patch.progress)));
+  }
   const start = patch.startDate;
   const end = patch.endDate ?? patch.estimatedCompletion;
   if (start) body.start_date = String(start).slice(0, 10);

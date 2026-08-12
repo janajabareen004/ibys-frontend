@@ -78,6 +78,7 @@ type ProgressRow = {
   end_date: string | null;
   status: string | null;
   project_id: string | null;
+  progress_percent?: number | null;
 };
 
 type ImageRow = {
@@ -349,7 +350,12 @@ function mapStages(rows: ProgressRow[], images: ImageRow[] = []): Stage[] {
       // task_name is shown verbatim (t() returns the string when it's not a key).
       nameKey: row.task_name ?? `tenant.timeline.stages.${CANONICAL_STAGES[index]}`,
       status,
-      progress: stageProgressFor(status),
+      // Prefer the real persisted percentage; fall back to the status-derived
+      // value only for legacy rows where progress_percent is null.
+      progress:
+        typeof row.progress_percent === "number"
+          ? row.progress_percent
+          : stageProgressFor(status),
       description: "",
       estimatedDate,
       completionDate: status === "completed" ? safeDate(row.end_date) : undefined,
