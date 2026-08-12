@@ -14,16 +14,18 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   stage: ManagedStage | null;
+  onSaved?: () => void;
 };
 
 const STATUSES: ManagedStage["status"][] = ["completed", "current", "pending", "delayed"];
 
-export function StageUpdateDialog({ open, onOpenChange, stage }: Props) {
+export function StageUpdateDialog({ open, onOpenChange, stage, onSaved }: Props) {
   const { t } = useI18n();
   const [progress, setProgress] = React.useState(0);
   const [status, setStatus] = React.useState<ManagedStage["status"]>("current");
   const [notes, setNotes] = React.useState("");
   const [estimated, setEstimated] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open || !stage) return;
@@ -35,15 +37,26 @@ export function StageUpdateDialog({ open, onOpenChange, stage }: Props) {
 
   if (!stage) return null;
 
-  const submit = () => {
-    managerActions.updateStage(stage.id, {
-      progress,
-      status,
-      notes,
-      estimatedCompletion: estimated ? new Date(estimated).toISOString() : stage.estimatedCompletion,
-    });
-    toast.success(t("manager.pm.toasts.updated"));
-    onOpenChange(false);
+  const submit = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      // Only status + end_date (from the estimated date) are persisted by the
+      // backend progress table; progress % and notes are display-only.
+      await managerActions.updateStage(stage.id, {
+        progress,
+        status,
+        notes,
+        estimatedCompletion: estimated ? new Date(estimated).toISOString() : stage.estimatedCompletion,
+      });
+      toast.success(t("manager.pm.toasts.updated"));
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -76,8 +89,8 @@ export function StageUpdateDialog({ open, onOpenChange, stage }: Props) {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("manager.pm.common.cancel")}</Button>
-          <Button onClick={submit}>{t("manager.pm.common.save")}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("manager.pm.common.cancel")}</Button>
+          <Button onClick={submit} disabled={saving}>{t("manager.pm.common.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -678,6 +678,170 @@ async function deleteManagerDocument(id: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: manager construction stages (backed by the `progress` table)
+//
+// "Stages" are progress rows: GET /api/progress (all) — each carries a
+// project_id — GET /api/projects/<id>/progress (per project), and
+// PUT /api/progress/<id> (MANAGER/BUILDING_COMPANY). Listing is scoped to the
+// manager's owned projects, then rows are grouped per project, ordered by the
+// real construction sequence, and assigned canonical stage keys by index
+// (mirroring the tenant timeline) so keys never collide and the sequence holds.
+// ---------------------------------------------------------------------------
+
+type BackendProgressRow = {
+  progress_id: string | number;
+  project_id: string | number | null;
+  task_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
+};
+
+// Canonical stage keys and the real-world construction sequence — identical to
+// the tenant timeline conventions so both roles order/label stages the same way.
+const CANONICAL_STAGE_KEYS: ProjectStageKey[] = [
+  "structural",
+  "electrical",
+  "plaster",
+  "windows",
+  "finishing",
+  "handover",
+];
+const STAGE_SEQUENCE: string[] = [
+  "site preparation",
+  "foundation",
+  "structure construction",
+  "electrical installation",
+  "interior finishing",
+];
+function stageSequenceRank(taskName: string | null | undefined): number {
+  const i = STAGE_SEQUENCE.indexOf((taskName ?? "").trim().toLowerCase());
+  return i === -1 ? STAGE_SEQUENCE.length : i;
+}
+
+/** Map a free-form backend progress status to the frontend stage status. */
+function normalizeStageStatus(status: string | null | undefined): ManagedStage["status"] {
+  const s = (status ?? "").toLowerCase();
+  if (/(complet|done|finish|closed)/.test(s)) return "completed";
+  if (/(delay|late|behind|block|stuck)/.test(s)) return "delayed";
+  if (/(progress|current|ongoing|active|started)/.test(s)) return "current";
+  return "pending";
+}
+
+/** Derive a progress percent from status (same convention as the tenant timeline). */
+function stageProgressForStatus(status: ManagedStage["status"]): number {
+  switch (status) {
+    case "completed":
+      return 100;
+    case "current":
+      return 50;
+    case "delayed":
+      return 25;
+    default:
+      return 0;
+  }
+}
+
+function mapManagedStage(row: BackendProgressRow, key: ProjectStageKey): ManagedStage {
+  const status = normalizeStageStatus(row.status);
+  return {
+    id: String(row.progress_id),
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    key,
+    status,
+    progress: stageProgressForStatus(status),
+    // The progress table has no columns for these; default them safely.
+    responsibleCompany: "",
+    estimatedCompletion: safeDate(row.end_date),
+    actualCompletion: status === "completed" ? safeDate(row.end_date) : undefined,
+    delayDays: 0,
+    photosCount: 0,
+    documentsCount: 0,
+    commentsCount: 0,
+    notes: "",
+  };
+}
+
+/**
+ * Group progress rows per project, order each project's rows by the real
+ * construction sequence (then start_date), and assign canonical stage keys by
+ * index so keys never collide and the sequence is preserved.
+ */
+function mapManagedStages(rows: BackendProgressRow[]): ManagedStage[] {
+  const byProject = new Map<string, BackendProgressRow[]>();
+  for (const row of rows) {
+    if (row.project_id == null) continue;
+    const pid = String(row.project_id);
+    const list = byProject.get(pid) ?? [];
+    list.push(row);
+    byProject.set(pid, list);
+  }
+
+  const out: ManagedStage[] = [];
+  for (const list of byProject.values()) {
+    const ordered = [...list].sort((a, b) => {
+      const rank = stageSequenceRank(a.task_name) - stageSequenceRank(b.task_name);
+      if (rank !== 0) return rank;
+      return safeDate(a.start_date).localeCompare(safeDate(b.start_date));
+    });
+    ordered.slice(0, CANONICAL_STAGE_KEYS.length).forEach((row, index) => {
+      out.push(mapManagedStage(row, CANONICAL_STAGE_KEYS[index]));
+    });
+  }
+  return out;
+}
+
+async function fetchManagerStages(): Promise<ManagedStage[]> {
+  const owned = await getOwnedProjectIds();
+  if (owned.size === 0) return [];
+  let rows: BackendProgressRow[];
+  try {
+    const res = await apiClient.get<BackendProgressRow[]>("/progress");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return mapManagedStages(
+    rows.filter((r) => r.project_id != null && owned.has(String(r.project_id))),
+  );
+}
+
+async function fetchManagerStagesForProject(projectId: string): Promise<ManagedStage[]> {
+  const owned = await getOwnedProjectIds();
+  if (!owned.has(String(projectId))) return [];
+  let rows: BackendProgressRow[];
+  try {
+    const res = await apiClient.get<BackendProgressRow[]>(`/projects/${projectId}/progress`);
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return mapManagedStages(rows);
+}
+
+type StagePatch = Partial<
+  Pick<ManagedStage, "progress" | "status" | "notes" | "estimatedCompletion" | "actualCompletion">
+> & { startDate?: string; endDate?: string };
+
+/**
+ * Persist a stage update to its progress row. Only columns the progress table
+ * actually has are sent: status, start_date, end_date. progress %, notes and
+ * responsibleCompany have no columns and are intentionally NOT persisted.
+ * Dates are sent as YYYY-MM-DD (the backend parses with date.fromisoformat).
+ */
+async function updateManagerStage(progressId: string, patch: StagePatch): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (patch.status) body.status = patch.status;
+  const start = patch.startDate;
+  const end = patch.endDate ?? patch.estimatedCompletion;
+  if (start) body.start_date = String(start).slice(0, 10);
+  if (end) body.end_date = String(end).slice(0, 10);
+  // Nothing persistable was provided — avoid an empty-body 400 from the backend.
+  if (Object.keys(body).length === 0) return;
+  await apiClient.put(`/progress/${progressId}`, body);
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: update a tenant request's status
 //
 // PATCH /api/requests/<request_id> with { status } persists the new status in
@@ -704,9 +868,9 @@ export const managerApi = {
   getStagesForProject: (projectId: string) =>
     USE_MOCK_API
       ? mockManagerService.getStagesForProject(projectId)
-      : apiClient.get<ManagedStage[]>(`/manager/projects/${projectId}/stages`),
+      : fetchManagerStagesForProject(projectId),
   getAllStages: () =>
-    USE_MOCK_API ? mockManagerService.getAllStages() : apiClient.get<ManagedStage[]>(`/manager/stages`),
+    USE_MOCK_API ? mockManagerService.getAllStages() : fetchManagerStages(),
   getTasks: () =>
     USE_MOCK_API ? mockManagerService.getTasks() : apiClient.get<ManagedTask[]>("/manager/tasks"),
   getTask: (id: string) =>
@@ -744,7 +908,10 @@ export const managerMutations = {
   deleteTask: mockManagerService.deleteTask,
   addTaskComment: mockManagerService.addTaskComment,
   toggleSubtask: mockManagerService.toggleSubtask,
-  updateStage: mockManagerService.updateStage,
+  updateStage: (id: string, patch: StagePatch) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.updateStage(id, patch))
+      : updateManagerStage(id, patch),
   createMeeting: (input: MeetingWriteInput) =>
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.createMeeting(input))

@@ -346,7 +346,7 @@ function Page() {
       <MeetingDialog open={meetingOpen} onOpenChange={setMeetingOpen} meeting={null} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={meetingsAll.refetch} />
       <PhotoUploadDialog open={photoOpen} onOpenChange={setPhotoOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={photosAll.refetch} />
       <DocumentUploadDialog open={docOpen} onOpenChange={setDocOpen} projects={project.data ? [project.data] : []} defaultProjectId={projectId} onSaved={docsAll.refetch} />
-      <StageUpdateDialog open={!!stageEditing} onOpenChange={(o) => !o && setStageEditing(null)} stage={stageEditing} />
+      <StageUpdateDialog open={!!stageEditing} onOpenChange={(o) => !o && setStageEditing(null)} stage={stageEditing} onSaved={stages.refetch} />
     </RoleGuard>
   );
 }

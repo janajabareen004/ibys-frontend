@@ -89,7 +89,7 @@ function Page() {
         </div>
       )}
 
-      <StageUpdateDialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)} stage={editing} />
+      <StageUpdateDialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)} stage={editing} onSaved={stages.refetch} />
       <PhotoUploadDialog
         open={!!uploadFor}
         onOpenChange={(o) => !o && setUploadFor(null)}
