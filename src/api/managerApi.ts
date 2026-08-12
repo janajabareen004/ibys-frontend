@@ -1140,6 +1140,73 @@ async function fetchManagerEmployee(id: string): Promise<Employee | null> {
   return mapEmployee(row, computeWorkload(row.name, tasks));
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: manager activity log
+//
+// Activity events are server-generated and read-only. GET /api/activity returns
+// every event newest-first; we scope to the authenticated manager's owned
+// projects client-side, matching the tasks/team/stages ownership pattern.
+// ---------------------------------------------------------------------------
+
+type BackendActivityRow = {
+  event_id: string | number;
+  project_id: string | number | null;
+  actor: string | null;
+  type: string | null;
+  message: string | null;
+  created_at: string | null;
+};
+
+// The vocabulary the Activity Log UI knows how to render. Unknown/legacy types
+// fall back to note_added so an event always has a valid icon/label.
+const ACTIVITY_TYPES: ReadonlySet<ActivityEvent["type"]> = new Set([
+  "task_completed",
+  "task_created",
+  "task_updated",
+  "task_deleted",
+  "meeting_scheduled",
+  "meeting_updated",
+  "stage_updated",
+  "photo_uploaded",
+  "document_added",
+  "request_received",
+  "request_replied",
+  "request_approved",
+  "request_rejected",
+  "note_added",
+]);
+
+function toActivityType(raw: string | null): ActivityEvent["type"] {
+  const value = (raw ?? "").trim() as ActivityEvent["type"];
+  return ACTIVITY_TYPES.has(value) ? value : "note_added";
+}
+
+function mapActivityEvent(row: BackendActivityRow): ActivityEvent {
+  return {
+    id: String(row.event_id),
+    type: toActivityType(row.type),
+    actor: row.actor ?? "",
+    projectId: row.project_id != null ? String(row.project_id) : undefined,
+    message: row.message ?? "",
+    createdAt: row.created_at ?? "",
+  };
+}
+
+async function fetchManagerActivity(): Promise<ActivityEvent[]> {
+  const owned = await getOwnedProjectIds();
+  if (owned.size === 0) return [];
+  let rows: BackendActivityRow[];
+  try {
+    const res = await apiClient.get<BackendActivityRow[]>("/activity");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return rows
+    .filter((r) => r.project_id != null && owned.has(String(r.project_id)))
+    .map(mapActivityEvent);
+}
+
 export const managerApi = {
   getProjects: () =>
     USE_MOCK_API ? mockManagerService.getProjects() : fetchManagerProjects(),
@@ -1166,7 +1233,7 @@ export const managerApi = {
   getEmployee: (id: string) =>
     USE_MOCK_API ? mockManagerService.getEmployee(id) : fetchManagerEmployee(id),
   getActivity: () =>
-    USE_MOCK_API ? mockManagerService.getActivity() : apiClient.get<ActivityEvent[]>("/manager/activity"),
+    USE_MOCK_API ? mockManagerService.getActivity() : fetchManagerActivity(),
   getPhotos: () =>
     USE_MOCK_API ? mockManagerService.getPhotos() : fetchManagerPhotos(),
   getDocuments: () =>
