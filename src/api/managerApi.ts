@@ -96,37 +96,140 @@ function normalizeProjectStatus(value: string | null | undefined): ManagedProjec
   if (["on_hold", "on hold", "paused", "hold"].includes(s)) return "on_hold";
   if (["at_risk", "at risk", "risk"].includes(s)) return "at_risk";
   if (["delayed", "late", "behind"].includes(s)) return "delayed";
+  // The UI has no dedicated "in progress" status; map it explicitly to on_track
+  // (the only healthy in-flight bucket) rather than relying on a fallthrough.
+  if (["on_track", "on track", "in progress", "in_progress", "active", "ongoing"].includes(s)) {
+    return "on_track";
+  }
   return "on_track";
 }
 
-function mapManagedProject(row: BackendProjectRow): ManagedProject {
+/**
+ * Build the project summary from its REAL progress rows — the same source the
+ * Construction Stages page uses (mapManagedStages). No second progress
+ * algorithm: overall progress is the average of the mapped per-stage progress
+ * values, and the current stage / date range come straight from those rows.
+ * The backend projects table has no progress/stage/date columns, so any field
+ * without a real source is left empty (never faked to "today").
+ */
+function averageStageProgress(stages: ManagedStage[]): number {
+  if (stages.length === 0) return 0;
+  const sum = stages.reduce((acc, s) => acc + (s.progress || 0), 0);
+  return Math.round(sum / stages.length);
+}
+
+function pickCurrentStageKey(stages: ManagedStage[]): ProjectStageKey {
+  const current = stages.find((s) => s.status === "current");
+  if (current) return current.key;
+  const firstIncomplete = stages.find((s) => s.status !== "completed");
+  if (firstIncomplete) return firstIncomplete.key;
+  return stages[stages.length - 1]?.key ?? CANONICAL_STAGE_KEYS[0];
+}
+
+/** Literal backend task_name of the current stage row (fallback: first
+ *  non-completed), ordered by the shared construction sequence. Returns "" when
+ *  no real row has a task_name, so the UI falls back to the canonical label. */
+function pickCurrentStageLabel(rows: BackendProgressRow[]): string {
+  const ordered = [...rows].sort((a, b) => {
+    const rank = stageSequenceRank(a.task_name) - stageSequenceRank(b.task_name);
+    if (rank !== 0) return rank;
+    return safeDate(a.start_date).localeCompare(safeDate(b.start_date));
+  });
+  const current = ordered.find((r) => normalizeStageStatus(r.status) === "current");
+  const chosen = current ?? ordered.find((r) => normalizeStageStatus(r.status) !== "completed");
+  return (chosen?.task_name ?? "").trim();
+}
+
+/** Earliest real start_date and latest real end_date across progress rows.
+ *  ISO YYYY-MM-DD strings sort lexicographically. Nulls are ignored; when no
+ *  real date exists the field stays "" so the UI can render a neutral "—". */
+function progressDateRange(rows: BackendProgressRow[]): { earliestStart: string; latestEnd: string } {
+  let earliestStart = "";
+  let latestEnd = "";
+  for (const r of rows) {
+    if (r.start_date && (!earliestStart || r.start_date < earliestStart)) earliestStart = r.start_date;
+    if (r.end_date && (!latestEnd || r.end_date > latestEnd)) latestEnd = r.end_date;
+  }
+  return { earliestStart, latestEnd };
+}
+
+function buildManagedProject(row: BackendProjectRow, progressRows: BackendProgressRow[]): ManagedProject {
+  const stages = mapManagedStages(progressRows);
+  const { earliestStart, latestEnd } = progressDateRange(progressRows);
   return {
     id: String(row.project_id),
     name: row.project_name ?? "",
     clientName: "",
     address: row.location ?? "",
-    progress: 0,
-    currentStage: "structural",
-    expectedCompletion: safeDate(null),
-    startDate: safeDate(null),
+    progress: averageStageProgress(stages),
+    currentStage: pickCurrentStageKey(stages),
+    currentStageLabel: pickCurrentStageLabel(progressRows) || undefined,
+    expectedCompletion: latestEnd,
+    startDate: earliestStart,
     status: normalizeProjectStatus(row.status),
     budget: { planned: 0, spent: 0, currency: "" },
     description: row.description ?? "",
     team: [],
     building: "",
     entrance: "",
-    updatedAt: safeDate(null),
+    // No backend "last updated" column exists; leave empty rather than faking today.
+    updatedAt: "",
   };
+}
+
+/** Group progress rows by project id for cheap per-project lookup. */
+function groupProgressByProject(rows: BackendProgressRow[]): Map<string, BackendProgressRow[]> {
+  const byProject = new Map<string, BackendProgressRow[]>();
+  for (const r of rows) {
+    if (r.project_id == null) continue;
+    const pid = String(r.project_id);
+    const list = byProject.get(pid) ?? [];
+    list.push(r);
+    byProject.set(pid, list);
+  }
+  return byProject;
 }
 
 async function fetchManagerProjects(): Promise<ManagedProject[]> {
   const managerId = getStoredUserId();
   if (!managerId) return [];
   const rows = await apiClient.get<BackendProjectRow[]>("/projects");
-  const list = Array.isArray(rows) ? rows : [];
-  return list
-    .filter((r) => r.project_manager_id === managerId)
-    .map(mapManagedProject);
+  const owned = (Array.isArray(rows) ? rows : []).filter((r) => r.project_manager_id === managerId);
+  if (owned.length === 0) return [];
+
+  // Fetch all progress once and derive each project's summary from it.
+  let progress: BackendProgressRow[] = [];
+  try {
+    const res = await apiClient.get<BackendProgressRow[]>("/progress");
+    progress = Array.isArray(res) ? res : [];
+  } catch {
+    progress = [];
+  }
+  const byProject = groupProgressByProject(progress);
+  return owned.map((r) => buildManagedProject(r, byProject.get(String(r.project_id)) ?? []));
+}
+
+/**
+ * Real single-project fetch — replaces the dead GET /manager/projects/<id>.
+ * Reuses GET /projects with the manager ownership check, then the project's
+ * real progress rows to build the exact same summary as the list card.
+ */
+async function fetchManagerProject(id: string): Promise<ManagedProject | null> {
+  const managerId = getStoredUserId();
+  if (!managerId) return null;
+  const rows = await apiClient.get<BackendProjectRow[]>("/projects");
+  const row = (Array.isArray(rows) ? rows : []).find(
+    (r) => String(r.project_id) === String(id) && r.project_manager_id === managerId,
+  );
+  if (!row) return null;
+  let progress: BackendProgressRow[] = [];
+  try {
+    const res = await apiClient.get<BackendProgressRow[]>(`/projects/${id}/progress`);
+    progress = Array.isArray(res) ? res : [];
+  } catch {
+    progress = [];
+  }
+  return buildManagedProject(row, progress);
 }
 
 // ---------------------------------------------------------------------------
@@ -1211,7 +1314,7 @@ export const managerApi = {
   getProjects: () =>
     USE_MOCK_API ? mockManagerService.getProjects() : fetchManagerProjects(),
   getProject: (id: string) =>
-    USE_MOCK_API ? mockManagerService.getProject(id) : apiClient.get<ManagedProject | null>(`/manager/projects/${id}`),
+    USE_MOCK_API ? mockManagerService.getProject(id) : fetchManagerProject(id),
   getStagesForProject: (projectId: string) =>
     USE_MOCK_API
       ? mockManagerService.getStagesForProject(projectId)

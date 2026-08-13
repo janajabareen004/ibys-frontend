@@ -51,6 +51,9 @@ export type ManagedProject = {
   address: string;
   progress: number;
   currentStage: ProjectStageKey;
+  /** Literal backend stage name for the current row (e.g. "Structure Construction").
+   *  Optional: falls back to the translated canonical `currentStage` label when absent. */
+  currentStageLabel?: string;
   expectedCompletion: string;
   startDate: string;
   status: ProjectStatus;

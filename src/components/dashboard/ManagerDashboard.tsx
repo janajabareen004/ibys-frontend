@@ -152,7 +152,7 @@ export function ManagerDashboard() {
                     <div className="hidden w-40 sm:block">
                       <div className="mb-1 flex items-center justify-between text-[11px]">
                         <span className="text-muted-foreground">{p.progress}%</span>
-                        <span className="text-muted-foreground">{formatDate(p.expectedCompletion)}</span>
+                        <span className="text-muted-foreground">{p.expectedCompletion ? formatDate(p.expectedCompletion) : "—"}</span>
                       </div>
                       <Progress value={p.progress} className="h-1.5" />
                     </div>

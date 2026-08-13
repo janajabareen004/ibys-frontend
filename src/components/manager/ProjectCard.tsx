@@ -9,7 +9,7 @@ import { MapPin, User, Calendar, ArrowRight } from "lucide-react";
 
 export function ProjectCard({ project, layout = "grid" }: { project: ManagedProject; layout?: "grid" | "list" }) {
   const { t, formatDate } = useI18n();
-  const stageLabel = t(`tenant.timeline.stages.${project.currentStage}`);
+  const stageLabel = project.currentStageLabel || t(`tenant.timeline.stages.${project.currentStage}`);
 
   return (
     <Card className="group relative overflow-hidden transition-all hover:shadow-md">
@@ -44,7 +44,7 @@ export function ProjectCard({ project, layout = "grid" }: { project: ManagedProj
             <Badge variant="secondary" className="rounded-full">{stageLabel}</Badge>
             <span className="flex items-center gap-1 text-muted-foreground">
               <Calendar className="h-3 w-3" aria-hidden />
-              {formatDate(project.expectedCompletion)}
+              {project.expectedCompletion ? formatDate(project.expectedCompletion) : "—"}
             </span>
           </div>
           <div className="flex -space-x-1.5 pt-1">

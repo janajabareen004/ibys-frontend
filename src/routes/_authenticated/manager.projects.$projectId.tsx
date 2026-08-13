@@ -118,16 +118,16 @@ function Page() {
             <ProjectStatusBadge status={p.status} />
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><MapPin className="h-4 w-4" aria-hidden />{p.address}</p>
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building className="h-4 w-4" aria-hidden />{t("manager.pm.building")}: {p.building} · {t("manager.pm.entrance")}: {p.entrance}</p>
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="h-4 w-4" aria-hidden />{t("manager.projectDetails.lastUpdated")}: {formatDate(p.updatedAt, { dateStyle: "medium", timeStyle: "short" })}</p>
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><Calendar className="h-4 w-4" aria-hidden />{t("manager.projectDetails.lastUpdated")}: {p.updatedAt ? formatDate(p.updatedAt, { dateStyle: "medium", timeStyle: "short" }) : "—"}</p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border border-border/60 bg-card p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("manager.projectDetails.currentStage")}</p>
-              <p className="font-semibold text-foreground">{t(`tenant.timeline.stages.${p.currentStage}`)}</p>
+              <p className="font-semibold text-foreground">{p.currentStageLabel || t(`tenant.timeline.stages.${p.currentStage}`)}</p>
             </div>
             <div className="rounded-xl border border-border/60 bg-card p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("manager.projects.expectedCompletion")}</p>
-              <p className="font-semibold text-foreground">{formatDate(p.expectedCompletion)}</p>
+              <p className="font-semibold text-foreground">{p.expectedCompletion ? formatDate(p.expectedCompletion) : "—"}</p>
             </div>
           </div>
         </div>
@@ -186,7 +186,7 @@ function Page() {
               <SectionCard title={t("manager.projectDetails.timeline")}>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CalendarClock className="h-4 w-4" aria-hidden />
-                  {formatDate(p.expectedCompletion, { dateStyle: "full" })}
+                  {p.expectedCompletion ? formatDate(p.expectedCompletion, { dateStyle: "full" }) : "—"}
                 </div>
               </SectionCard>
             </div>
