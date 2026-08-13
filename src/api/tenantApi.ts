@@ -283,10 +283,17 @@ function loadTenantContext(): Promise<TenantContext> {
 // Mappers (backend row -> frontend type)
 // ---------------------------------------------------------------------------
 
+type ManagerProfileRow = {
+  user_id?: string | null;
+  manager_name?: string | null;
+  phone?: string | null;
+};
+
 function mapProject(
   row: ProjectRow,
   apartment: ApartmentRow | null,
   progressRows: ProgressRow[],
+  manager: ManagerProfileRow | null = null,
 ): Project {
   // Latest task end_date acts as the "expected delivery" (backend has no such
   // field). Falls back to today's date so date formatting never throws.
@@ -312,7 +319,13 @@ function mapProject(
     name: row.project_name ?? "",
     address: row.location ?? "",
     developer: "",
-    manager: { name: "", email: "", phone: "" },
+    // Resolved from the project's project_manager_id via GET /managers/<id>.
+    // Email is not exposed by the backend, so it stays empty (never fabricated).
+    manager: {
+      name: manager?.manager_name ?? "",
+      email: "",
+      phone: manager?.phone ?? "",
+    },
     progress,
     expectedDelivery,
     description: row.description ?? "",
@@ -493,7 +506,18 @@ export const tenantApi = {
     } catch {
       progressRows = [];
     }
-    return mapProject(row, ctx.apartment, progressRows);
+    // Resolve the project's manager profile (name + phone). Best-effort: if the
+    // request fails or there is no assigned manager, project loading still
+    // succeeds with an empty manager.
+    let manager: ManagerProfileRow | null = null;
+    if (row.project_manager_id) {
+      try {
+        manager = await apiClient.get<ManagerProfileRow>(`/managers/${row.project_manager_id}`);
+      } catch {
+        manager = null;
+      }
+    }
+    return mapProject(row, ctx.apartment, progressRows, manager);
   },
 
   getStages: async (): Promise<Stage[]> => {

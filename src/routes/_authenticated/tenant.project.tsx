@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Building2, MapPin, User, Phone, Mail, ArrowRight, Layers, CalendarClock } from "lucide-react";
+import { Building2, MapPin, Phone, Mail, ArrowRight, Layers, CalendarClock } from "lucide-react";
 import { RoleGuard } from "@/components/common/RoleGuard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,22 +104,23 @@ function Page() {
               <CardContent className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="grid h-10 w-10 place-items-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                    {project.manager.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+                    {project.manager.name.split(" ").filter(Boolean).map((n) => n[0]).slice(0, 2).join("")}
                   </span>
                   <div className="min-w-0">
                     <div className="font-semibold">{project.manager.name}</div>
                     <div className="text-xs text-muted-foreground">{t("roles.PROJECT_MANAGER")}</div>
                   </div>
                 </div>
-                <a href={`mailto:${project.manager.email}`} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
-                  <Mail className="h-3.5 w-3.5" aria-hidden />{project.manager.email}
-                </a>
-                <a href={`tel:${project.manager.phone}`} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
-                  <Phone className="h-3.5 w-3.5" aria-hidden />{project.manager.phone}
-                </a>
-                <Button size="sm" variant="outline" className="mt-2 w-full">
-                  <User className="h-4 w-4" />{t("tenant.actions.contactManager")}
-                </Button>
+                {project.manager.email && (
+                  <a href={`mailto:${project.manager.email}`} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
+                    <Mail className="h-3.5 w-3.5" aria-hidden />{project.manager.email}
+                  </a>
+                )}
+                {project.manager.phone && (
+                  <a href={`tel:${project.manager.phone}`} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary">
+                    <Phone className="h-3.5 w-3.5" aria-hidden />{project.manager.phone}
+                  </a>
+                )}
               </CardContent>
             </Card>
           </div>
