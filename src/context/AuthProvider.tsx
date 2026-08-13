@@ -125,7 +125,23 @@ function buildUser(
   return {
     id: userId,
     role,
-    name: pickString(profile, ["full_name", "fullName", "name", "display_name", "displayName"]) ?? "",
+    name:
+      pickString(profile, [
+        "full_name",
+        "fullName",
+        "name",
+        "display_name",
+        "displayName",
+        // Role-specific name fields returned by GET /auth/me `profile`:
+        // project_managers.manager_name, building_companies.company_name,
+        // tenants.full_name.
+        "manager_name",
+        "managerName",
+        "company_name",
+        "companyName",
+        "tenant_name",
+        "tenantName",
+      ]) ?? "",
     email: pickString(profile, ["email"]) ?? "",
     phone: pickString(profile, ["phone", "phone_number", "phoneNumber"]),
     avatarUrl: pickString(profile, ["avatar_url", "avatarUrl", "avatar"]),
