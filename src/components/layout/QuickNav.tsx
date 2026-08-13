@@ -9,7 +9,6 @@ import {
   FolderKanban,
   ClipboardList,
   Layers,
-  FileBarChart,
   UploadCloud,
   type LucideIcon,
 } from "lucide-react";
@@ -40,7 +39,6 @@ const ITEMS_BY_ROLE: Record<Role, QuickNavItem[]> = {
     { to: "/manager/upload", labelKey: "manager.nav.upload", icon: UploadCloud },
     { to: "/manager/meetings", labelKey: "nav.meetings", icon: CalendarClock },
     { to: "/manager/requests", labelKey: "nav.tenantRequests", icon: Inbox },
-    { to: "/manager/reports", labelKey: "nav.reports", icon: FileBarChart },
   ],
   BUILDING_COMPANY: [
     { to: "/company/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },

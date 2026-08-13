@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link } from "@tanstack/react-router";
 import {
-  FolderKanban, AlertTriangle, CalendarClock, FileBarChart, Plus, ClipboardList,
+  FolderKanban, AlertTriangle, CalendarClock, Plus, ClipboardList,
   Sparkles, Bell, CheckCircle2, TrendingUp, ArrowRight, Inbox, FileText, Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -121,7 +121,6 @@ export function ManagerDashboard() {
           <Button asChild size="sm"><Link to="/manager/projects"><Plus className="h-4 w-4" />{t("manager.actions.newProject")}</Link></Button>
           <Button size="sm" variant="secondary" onClick={() => setTaskOpen(true)}><ClipboardList className="h-4 w-4" />{t("manager.actions.newTask")}</Button>
           <Button size="sm" variant="outline" onClick={() => setMeetingOpen(true)}><CalendarClock className="h-4 w-4" />{t("manager.actions.scheduleMeeting")}</Button>
-          <Button asChild size="sm" variant="ghost"><Link to="/manager/reports"><FileBarChart className="h-4 w-4" />{t("manager.actions.generateReport")}</Link></Button>
           <Button asChild size="sm" variant="ghost"><Link to="/manager/assistant"><Sparkles className="h-4 w-4" />{t("nav.assistant")}</Link></Button>
         </div>
       </SectionCard>
@@ -132,7 +131,6 @@ export function ManagerDashboard() {
         <div className="space-y-4 sm:space-y-5 lg:space-y-6 lg:col-span-2">
           <SectionCard
             title={t("manager.sections.portfolio")}
-            action={<Button asChild variant="ghost" size="sm"><Link to="/manager/reports">{t("manager.actions.viewAll")}</Link></Button>}
           >
             <ChartPlaceholder variant="area" height={180} />
           </SectionCard>

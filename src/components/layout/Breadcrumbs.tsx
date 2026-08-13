@@ -18,7 +18,6 @@ const SEGMENT_LABEL_KEY: Record<string, string> = {
   settings: "nav.settings",
   tasks: "nav.tasks",
   stages: "nav.stages",
-  reports: "nav.reports",
   requests: "nav.requests",
 };
 

@@ -38,7 +38,6 @@ import { Route as AuthenticatedManagerMeetingsRouteImport } from './routes/_auth
 import { Route as AuthenticatedManagerNotificationsRouteImport } from './routes/_authenticated/manager.notifications'
 import { Route as AuthenticatedManagerPhotosRouteImport } from './routes/_authenticated/manager.photos'
 import { Route as AuthenticatedManagerProjectsRouteImport } from './routes/_authenticated/manager.projects'
-import { Route as AuthenticatedManagerReportsRouteImport } from './routes/_authenticated/manager.reports'
 import { Route as AuthenticatedManagerRequestsRouteImport } from './routes/_authenticated/manager.requests'
 import { Route as AuthenticatedManagerSearchRouteImport } from './routes/_authenticated/manager.search'
 import { Route as AuthenticatedManagerSettingsRouteImport } from './routes/_authenticated/manager.settings'
@@ -229,12 +228,6 @@ const AuthenticatedManagerProjectsRoute =
     path: '/manager/projects',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedManagerReportsRoute =
-  AuthenticatedManagerReportsRouteImport.update({
-    id: '/manager/reports',
-    path: '/manager/reports',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const AuthenticatedManagerRequestsRoute =
   AuthenticatedManagerRequestsRouteImport.update({
     id: '/manager/requests',
@@ -397,7 +390,6 @@ export interface FileRoutesByFullPath {
   '/manager/notifications': typeof AuthenticatedManagerNotificationsRoute
   '/manager/photos': typeof AuthenticatedManagerPhotosRoute
   '/manager/projects': typeof AuthenticatedManagerProjectsRouteWithChildren
-  '/manager/reports': typeof AuthenticatedManagerReportsRoute
   '/manager/requests': typeof AuthenticatedManagerRequestsRoute
   '/manager/search': typeof AuthenticatedManagerSearchRoute
   '/manager/settings': typeof AuthenticatedManagerSettingsRoute
@@ -450,7 +442,6 @@ export interface FileRoutesByTo {
   '/manager/notifications': typeof AuthenticatedManagerNotificationsRoute
   '/manager/photos': typeof AuthenticatedManagerPhotosRoute
   '/manager/projects': typeof AuthenticatedManagerProjectsRouteWithChildren
-  '/manager/reports': typeof AuthenticatedManagerReportsRoute
   '/manager/requests': typeof AuthenticatedManagerRequestsRoute
   '/manager/search': typeof AuthenticatedManagerSearchRoute
   '/manager/settings': typeof AuthenticatedManagerSettingsRoute
@@ -505,7 +496,6 @@ export interface FileRoutesById {
   '/_authenticated/manager/notifications': typeof AuthenticatedManagerNotificationsRoute
   '/_authenticated/manager/photos': typeof AuthenticatedManagerPhotosRoute
   '/_authenticated/manager/projects': typeof AuthenticatedManagerProjectsRouteWithChildren
-  '/_authenticated/manager/reports': typeof AuthenticatedManagerReportsRoute
   '/_authenticated/manager/requests': typeof AuthenticatedManagerRequestsRoute
   '/_authenticated/manager/search': typeof AuthenticatedManagerSearchRoute
   '/_authenticated/manager/settings': typeof AuthenticatedManagerSettingsRoute
@@ -560,7 +550,6 @@ export interface FileRouteTypes {
     | '/manager/notifications'
     | '/manager/photos'
     | '/manager/projects'
-    | '/manager/reports'
     | '/manager/requests'
     | '/manager/search'
     | '/manager/settings'
@@ -613,7 +602,6 @@ export interface FileRouteTypes {
     | '/manager/notifications'
     | '/manager/photos'
     | '/manager/projects'
-    | '/manager/reports'
     | '/manager/requests'
     | '/manager/search'
     | '/manager/settings'
@@ -667,7 +655,6 @@ export interface FileRouteTypes {
     | '/_authenticated/manager/notifications'
     | '/_authenticated/manager/photos'
     | '/_authenticated/manager/projects'
-    | '/_authenticated/manager/reports'
     | '/_authenticated/manager/requests'
     | '/_authenticated/manager/search'
     | '/_authenticated/manager/settings'
@@ -902,13 +889,6 @@ declare module '@tanstack/react-router' {
       path: '/manager/projects'
       fullPath: '/manager/projects'
       preLoaderRoute: typeof AuthenticatedManagerProjectsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/manager/reports': {
-      id: '/_authenticated/manager/reports'
-      path: '/manager/reports'
-      fullPath: '/manager/reports'
-      preLoaderRoute: typeof AuthenticatedManagerReportsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/manager/requests': {
@@ -1168,7 +1148,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedManagerNotificationsRoute: typeof AuthenticatedManagerNotificationsRoute
   AuthenticatedManagerPhotosRoute: typeof AuthenticatedManagerPhotosRoute
   AuthenticatedManagerProjectsRoute: typeof AuthenticatedManagerProjectsRouteWithChildren
-  AuthenticatedManagerReportsRoute: typeof AuthenticatedManagerReportsRoute
   AuthenticatedManagerRequestsRoute: typeof AuthenticatedManagerRequestsRoute
   AuthenticatedManagerSearchRoute: typeof AuthenticatedManagerSearchRoute
   AuthenticatedManagerSettingsRoute: typeof AuthenticatedManagerSettingsRoute
@@ -1218,7 +1197,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedManagerPhotosRoute: AuthenticatedManagerPhotosRoute,
   AuthenticatedManagerProjectsRoute:
     AuthenticatedManagerProjectsRouteWithChildren,
-  AuthenticatedManagerReportsRoute: AuthenticatedManagerReportsRoute,
   AuthenticatedManagerRequestsRoute: AuthenticatedManagerRequestsRoute,
   AuthenticatedManagerSearchRoute: AuthenticatedManagerSearchRoute,
   AuthenticatedManagerSettingsRoute: AuthenticatedManagerSettingsRoute,
