@@ -1310,6 +1310,69 @@ async function fetchManagerActivity(): Promise<ActivityEvent[]> {
     .map(mapActivityEvent);
 }
 
+// ---------------------------------------------------------------------------
+// Manager notifications (real backend, recipient-scoped server-side)
+// ---------------------------------------------------------------------------
+
+type BackendManagerNotificationRow = {
+  id: string | number;
+  recipient_id?: string | null;
+  project_id?: string | number | null;
+  type: string | null;
+  title: string | null;
+  message: string | null;
+  is_read: boolean | null;
+  created_at: string | null;
+};
+
+// The category vocabulary the Notifications UI renders. Unknown/legacy backend
+// types safely fall back to "system".
+const NOTIFICATION_CATEGORIES: ReadonlySet<ManagedNotification["category"]> = new Set([
+  "project",
+  "task",
+  "meeting",
+  "construction",
+  "system",
+  "request",
+]);
+
+function toNotificationCategory(raw: string | null): ManagedNotification["category"] {
+  const value = (raw ?? "").trim().toLowerCase() as ManagedNotification["category"];
+  return NOTIFICATION_CATEGORIES.has(value) ? value : "system";
+}
+
+function mapManagerNotification(row: BackendManagerNotificationRow): ManagedNotification {
+  return {
+    id: String(row.id),
+    category: toNotificationCategory(row.type),
+    title: row.title ?? "",
+    body: row.message ?? "",
+    createdAt: row.created_at ?? "",
+    read: row.is_read ?? false,
+  };
+}
+
+// The backend endpoint is already scoped to the authenticated recipient, so no
+// client-side ownership filtering is needed (or trusted) here.
+async function fetchManagerNotifications(): Promise<ManagedNotification[]> {
+  let rows: BackendManagerNotificationRow[];
+  try {
+    const res = await apiClient.get<BackendManagerNotificationRow[]>("/manager/notifications");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return rows.map(mapManagerNotification);
+}
+
+async function markManagerNotificationRead(id: string, read: boolean): Promise<void> {
+  await apiClient.patch(`/manager/notifications/${id}/read`, { read });
+}
+
+async function markAllManagerNotificationsRead(): Promise<void> {
+  await apiClient.post(`/manager/notifications/read-all`, {});
+}
+
 export const managerApi = {
   getProjects: () =>
     USE_MOCK_API ? mockManagerService.getProjects() : fetchManagerProjects(),
@@ -1330,7 +1393,7 @@ export const managerApi = {
   getMeetings: () =>
     USE_MOCK_API ? mockManagerService.getMeetings() : fetchManagerMeetings(),
   getNotifications: () =>
-    USE_MOCK_API ? mockManagerService.getNotifications() : apiClient.get<ManagedNotification[]>("/manager/notifications"),
+    USE_MOCK_API ? mockManagerService.getNotifications() : fetchManagerNotifications(),
   getEmployees: () =>
     USE_MOCK_API ? mockManagerService.getEmployees() : fetchManagerTeam(),
   getEmployee: (id: string) =>
@@ -1403,8 +1466,14 @@ export const managerMutations = {
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.updateRequest(requestId, { status }))
       : updateManagerRequestStatus(requestId, status),
-  markNotificationRead: mockManagerService.markNotificationRead,
-  markAllNotificationsRead: mockManagerService.markAllNotificationsRead,
+  markNotificationRead: (id: string, read = true) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.markNotificationRead(id, read))
+      : markManagerNotificationRead(id, read),
+  markAllNotificationsRead: () =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.markAllNotificationsRead())
+      : markAllManagerNotificationsRead(),
   addPhoto: (input: PhotoWriteInput) =>
     USE_MOCK_API
       ? Promise.resolve(

@@ -29,7 +29,7 @@ const CATEGORIES: Array<ManagedNotification["category"] | "all"> = ["all", "proj
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data, loading } = useManagerNotifications();
+  const { data, loading, refetch } = useManagerNotifications();
   const [q, setQ] = React.useState("");
   const unread = (data ?? []).filter((n) => !n.read).length;
 
@@ -39,9 +39,23 @@ function Page() {
     return matchQ && matchC;
   });
 
-  const markAll = () => {
-    managerActions.markAllNotificationsRead();
-    toast.success(t("manager.pm.toasts.allRead"));
+  const markAll = async () => {
+    try {
+      await managerActions.markAllNotificationsRead();
+      refetch();
+      toast.success(t("manager.pm.toasts.allRead"));
+    } catch {
+      toast.error(t("common.error"));
+    }
+  };
+
+  const toggleRead = async (n: ManagedNotification) => {
+    try {
+      await managerActions.markNotificationRead(n.id, !n.read);
+      refetch();
+    } catch {
+      toast.error(t("common.error"));
+    }
   };
 
   return (
@@ -74,7 +88,7 @@ function Page() {
                   <li key={n.id}>
                     <Card
                       className={`cursor-pointer transition-colors hover:bg-muted/30 ${n.read ? "" : "border-primary/30"}`}
-                      onClick={() => managerActions.markNotificationRead(n.id, !n.read)}
+                      onClick={() => toggleRead(n)}
                     >
                       <CardContent className="flex items-start gap-3 p-4">
                         <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${n.read ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}`}>
