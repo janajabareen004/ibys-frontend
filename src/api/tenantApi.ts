@@ -288,10 +288,6 @@ function mapProject(
   apartment: ApartmentRow | null,
   progressRows: ProgressRow[],
 ): Project {
-  const total = progressRows.length;
-  const done = progressRows.filter((p) => mapStageStatus(p.status) === "completed").length;
-  const progress = total ? Math.round((done / total) * 100) : 0;
-
   // Latest task end_date acts as the "expected delivery" (backend has no such
   // field). Falls back to today's date so date formatting never throws.
   const endDates = progressRows
@@ -301,6 +297,13 @@ function mapProject(
   const expectedDelivery = safeDate(endDates.length ? endDates[endDates.length - 1] : null);
 
   const stages = mapStages(progressRows);
+
+  // Overall progress = rounded average of the already-mapped per-stage progress
+  // values (which honor real progress_percent, else status-derived). This is the
+  // same interpretation the Manager summary uses, so both views agree.
+  const progress = stages.length
+    ? Math.round(stages.reduce((sum, s) => sum + s.progress, 0) / stages.length)
+    : 0;
   const currentStageId =
     stages.find((s) => s.status === "current")?.id ?? stages[0]?.id ?? "structural";
 
