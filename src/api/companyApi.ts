@@ -429,6 +429,10 @@ type TenantProfileRow = {
   user_id?: string | null;
   full_name?: string | null;
   phone?: string | null;
+  // Resolved server-side from Supabase Auth (not stored on public.tenants).
+  // Best-effort: "" or missing if the Auth lookup failed.
+  email?: string | null;
+  created_at?: string | null;
 };
 
 async function fetchTenantProfile(tenantId: string): Promise<TenantProfileRow | null> {
@@ -472,13 +476,14 @@ async function fetchCompanyTenants(): Promise<CompanyTenant[]> {
     .map((id) => {
       const profile = profiles.get(id)!;
       return {
-        id,
+        id: profile.user_id ? String(profile.user_id) : id,
         name: (profile.full_name ?? "").trim(),
-        email: "",
+        email: (profile.email ?? "").trim(),
         phone: (profile.phone ?? "").trim(),
+        // No nationalId/notes column on public.tenants — never fabricated.
         nationalId: undefined,
         notes: undefined,
-        createdAt: "",
+        createdAt: (profile.created_at ?? "").trim(),
       };
     });
 }
