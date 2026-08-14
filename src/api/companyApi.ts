@@ -18,6 +18,7 @@ import {
   type UploadItem,
   type CompanyRequest,
   type CompanyMeeting,
+  type CompanyMeetingStatus,
   type CompanyNotification,
   type CompanyActivity,
   type CompanyEmployee,
@@ -39,6 +40,7 @@ export type {
   UploadItem,
   CompanyRequest,
   CompanyMeeting,
+  CompanyMeetingStatus,
   CompanyNotification,
   CompanyActivity,
   CompanyEmployee,
@@ -583,6 +585,105 @@ async function createCompanyDocument(
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: meetings listing (company-scoped)
+//
+// There is no "/company/meetings" endpoint. Meetings live at GET /api/meetings
+// (all projects, the same single request the Manager portal already uses) and
+// each row carries a project_id. Ownership is derived the same way as
+// documents/apartments/tenants/stages: keep only rows whose project_id belongs
+// to this company's owned project ids (fetchOwnedProjectIds()). Field mapping,
+// status normalization, and safe-date handling mirror managerApi.ts's
+// mapManagedMeeting()/normalizeMeetingStatus() exactly so every portal
+// interprets the same underlying meeting row consistently. Meeting mutations
+// (create/update/status/delete) are intentionally left untouched — the real
+// write endpoints are MANAGER-only server-side.
+// ---------------------------------------------------------------------------
+
+type BackendMeetingRow = {
+  meeting_id: string | number;
+  meeting_date: string | null;
+  meeting_time: string | null;
+  purpose: string | null;
+  status: string | null;
+  project_id: string | number | null;
+  project_manager_id: string | null;
+  location: string | null;
+  duration_min: number | null;
+  participants: string | null;
+  meeting_link: string | null;
+};
+
+/** Guaranteed-valid ISO date string (formatDate throws on invalid input) — same convention as managerApi.ts's safeDate(). */
+function safeMeetingDate(value: string | null | undefined): string {
+  if (typeof value === "string" && value) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return value;
+  }
+  return new Date().toISOString();
+}
+
+/** Map backend status + date to one of the UI's 5 meeting buckets — mirrors managerApi.ts's normalizeMeetingStatus(). */
+function normalizeCompanyMeetingStatus(
+  status: string | null | undefined,
+  whenIso: string,
+): CompanyMeetingStatus {
+  const s = (status ?? "").trim().toLowerCase();
+  if (s.includes("cancel") || s.includes("reject") || s.includes("declin")) {
+    return "cancelled";
+  }
+  if (s.includes("reschedul")) return "rescheduled";
+  const when = new Date(whenIso);
+  const now = new Date();
+  const sameDay =
+    when.getFullYear() === now.getFullYear() &&
+    when.getMonth() === now.getMonth() &&
+    when.getDate() === now.getDate();
+  if (sameDay) return "today";
+  return when.getTime() >= now.getTime() ? "upcoming" : "past";
+}
+
+function mapCompanyMeeting(row: BackendMeetingRow): CompanyMeeting {
+  const when = safeMeetingDate(
+    row.meeting_date ? `${row.meeting_date}T${row.meeting_time ?? "00:00"}` : null,
+  );
+  return {
+    id: String(row.meeting_id),
+    title: row.purpose ?? "Meeting",
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    when,
+    durationMin: row.duration_min ?? 0,
+    location: row.location ?? "",
+    // No real agenda column — never fabricated.
+    agenda: "",
+    participants: row.participants
+      ? row.participants.split(",").map((p) => p.trim()).filter(Boolean)
+      : [],
+    status: normalizeCompanyMeetingStatus(row.status, when),
+    // No real notes column — never fabricated.
+    notes: undefined,
+  };
+}
+
+/** Fetches all meetings once, then keeps only rows whose project_id is owned by this company. */
+async function fetchCompanyMeetings(): Promise<CompanyMeeting[]> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (ownedIds.length === 0) return [];
+  const ownedSet = new Set(ownedIds);
+
+  let rows: BackendMeetingRow[];
+  try {
+    const res = await apiClient.get<BackendMeetingRow[]>("/meetings");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+
+  return rows
+    .filter((m) => m.project_id != null && ownedSet.has(String(m.project_id)))
+    .map(mapCompanyMeeting);
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: construction stages listing (company-scoped)
 //
 // There is no "/company/stages" endpoint. Stages are derived from the same
@@ -699,7 +800,7 @@ export const companyApi = {
   getRequests: () =>
     USE_MOCK_API ? mockCompanyService.getRequests() : apiClient.get<CompanyRequest[]>("/company/requests"),
   getMeetings: () =>
-    USE_MOCK_API ? mockCompanyService.getMeetings() : apiClient.get<CompanyMeeting[]>("/company/meetings"),
+    USE_MOCK_API ? mockCompanyService.getMeetings() : fetchCompanyMeetings(),
   getNotifications: () =>
     USE_MOCK_API ? mockCompanyService.getNotifications() : apiClient.get<CompanyNotification[]>("/company/notifications"),
   getActivity: () =>
