@@ -16,6 +16,22 @@ import { notifySuccess, notifyError } from "@/components/feedback/SuccessNotific
 import type { CompanyStage } from "@/mocks/mockCompanyService";
 import { AlertTriangle, Camera, FileText, MessageSquare, UploadCloud } from "lucide-react";
 
+/**
+ * Guards date formatting against empty/invalid values (e.g. real progress rows
+ * have no `updated_at`, so `lastUpdate` is intentionally ""). new Date("") is an
+ * Invalid Date, and Intl.DateTimeFormat throws RangeError on it — never call
+ * formatDate directly on a stage date field without this guard.
+ */
+function safeFormatStageDate(
+  formatDate: (d: Date | string | number, opts?: Intl.DateTimeFormatOptions) => string,
+  value: string | undefined | null,
+  opts?: Intl.DateTimeFormatOptions,
+): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "—" : formatDate(d, opts);
+}
+
 export function StageManagementCard({ stage, projectName }: { stage: CompanyStage; projectName?: string }) {
   const { t, formatDate } = useI18n();
   const [open, setOpen] = React.useState(false);
@@ -79,10 +95,10 @@ export function StageManagementCard({ stage, projectName }: { stage: CompanyStag
           </div>
           <div className="grid gap-2 text-xs sm:grid-cols-3">
             <div><p className="text-muted-foreground">{t("company.stages.responsibleTeam")}</p><p className="font-semibold text-foreground">{stage.responsibleTeam}</p></div>
-            <div><p className="text-muted-foreground">{t("company.stages.estimated")}</p><p className="font-semibold text-foreground">{formatDate(stage.estimatedCompletion)}</p></div>
-            <div><p className="text-muted-foreground">{t("company.stages.completed")}</p><p className="font-semibold text-foreground">{stage.actualCompletion ? formatDate(stage.actualCompletion) : "—"}</p></div>
+            <div><p className="text-muted-foreground">{t("company.stages.estimated")}</p><p className="font-semibold text-foreground">{safeFormatStageDate(formatDate, stage.estimatedCompletion)}</p></div>
+            <div><p className="text-muted-foreground">{t("company.stages.completed")}</p><p className="font-semibold text-foreground">{safeFormatStageDate(formatDate, stage.actualCompletion)}</p></div>
           </div>
-          <p className="text-xs text-muted-foreground">{t("company.stages.lastUpdate")}: {formatDate(stage.lastUpdate, { dateStyle: "medium", timeStyle: "short" })} · {stage.notes}</p>
+          <p className="text-xs text-muted-foreground">{t("company.stages.lastUpdate")}: {safeFormatStageDate(formatDate, stage.lastUpdate, { dateStyle: "medium", timeStyle: "short" })} · {stage.notes}</p>
           <div className="flex flex-wrap gap-2 text-xs">
             <Link to="/company/stages/$stageId" params={{ stageId: stage.id }}>
               <Badge variant="secondary" className="rounded-full hover:bg-accent"><Camera className="me-1 h-3 w-3" />{stage.photosCount} {t("company.stages.photos")}</Badge>
