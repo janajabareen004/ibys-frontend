@@ -78,11 +78,11 @@ function Page() {
             <TableBody>
               {list.map((tn) => (
                 <TableRow key={tn.id}>
-                  <TableCell className="font-medium">{tn.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{tn.email}</TableCell>
-                  <TableCell className="text-muted-foreground">{tn.phone}</TableCell>
+                  <TableCell className="font-medium">{tn.name || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{tn.email || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{tn.phone || "—"}</TableCell>
                   <TableCell><Badge variant="secondary">{apartmentsByTenant.get(tn.id) ?? 0}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(tn.createdAt)}</TableCell>
+                  <TableCell className="text-muted-foreground">{tn.createdAt ? formatDate(tn.createdAt) : "—"}</TableCell>
                   <TableCell className="text-end">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(tn)}><Pencil className="h-4 w-4" /></Button>
                   </TableCell>

@@ -233,6 +233,16 @@ function isOwnedByCompany(row: BackendProjectRow, companyUserId: string): boolea
   return String(row.building_company_id ?? "") === String(companyUserId);
 }
 
+/** Unique project_ids owned by the logged-in company, per GET /projects. Empty if no session/no owned projects. */
+async function fetchOwnedProjectIds(): Promise<string[]> {
+  const companyUserId = getStoredUserId();
+  if (!companyUserId) return [];
+  const rows = await apiClient.get<BackendProjectRow[]>("/projects");
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => isOwnedByCompany(r, companyUserId))
+    .map((r) => String(r.project_id));
+}
+
 async function fetchCompanyProgress(): Promise<BackendProgressRow[]> {
   try {
     const res = await apiClient.get<BackendProgressRow[]>("/progress");
@@ -323,6 +333,156 @@ async function fetchCompanyProjectManagers(): Promise<ProjectManagerPerson[]> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: apartments (company-scoped)
+//
+// There is no "/company/apartments" endpoint. Apartments live at the existing
+// GET /projects/<project_id>/apartments (and GET /apartments/<apartment_id>).
+// We only ever fetch apartments for projects already confirmed to be owned by
+// the logged-in company, so the apartment list stays company-scoped without
+// needing any backend change.
+// ---------------------------------------------------------------------------
+
+type BackendApartmentRow = {
+  apartment_id: string | number;
+  apartment_number?: string | number | null;
+  floor?: string | number | null;
+  size?: number | null;
+  status?: string | null;
+  tenant_id?: string | number | null;
+  project_id?: string | number | null;
+};
+
+/**
+ * The backend apartments table has no building/entrance/rooms columns (mock-only
+ * fields). Status is mapped best-effort from the real string; when it doesn't
+ * match a known value we infer vacant/assigned from tenant_id presence rather
+ * than fabricate a status.
+ */
+function normalizeApartmentStatus(row: BackendApartmentRow): ApartmentStatus {
+  const s = (row.status ?? "").toString().trim().toLowerCase();
+  if (["vacant", "empty", "available"].includes(s)) return "vacant";
+  if (["assigned", "occupied", "rented", "leased"].includes(s)) return "assigned";
+  if (["sold"].includes(s)) return "sold";
+  if (["reserved", "pending", "hold", "on_hold"].includes(s)) return "reserved";
+  return row.tenant_id != null && row.tenant_id !== "" ? "assigned" : "vacant";
+}
+
+function mapCompanyApartment(row: BackendApartmentRow): Apartment {
+  return {
+    id: String(row.apartment_id),
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    building: "",
+    entrance: "",
+    floor: row.floor != null ? String(row.floor) : "",
+    number: row.apartment_number != null ? String(row.apartment_number) : "",
+    rooms: 0,
+    sizeSqm: typeof row.size === "number" ? row.size : 0,
+    status: normalizeApartmentStatus(row),
+    tenantId: row.tenant_id != null && row.tenant_id !== "" ? String(row.tenant_id) : undefined,
+    notes: undefined,
+  };
+}
+
+/** Raw backend apartment rows for every project owned by the logged-in company. */
+async function fetchOwnedApartmentRows(): Promise<BackendApartmentRow[]> {
+  const projectIds = await fetchOwnedProjectIds();
+  if (projectIds.length === 0) return [];
+  const perProject = await Promise.all(
+    projectIds.map(async (id) => {
+      try {
+        const res = await apiClient.get<BackendApartmentRow[]>(`/projects/${id}/apartments`);
+        return Array.isArray(res) ? res : [];
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return perProject.flat();
+}
+
+async function fetchCompanyApartments(): Promise<Apartment[]> {
+  const rows = await fetchOwnedApartmentRows();
+  return rows.map(mapCompanyApartment);
+}
+
+async function fetchCompanyApartmentsForProject(projectId: string): Promise<Apartment[]> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (!ownedIds.includes(String(projectId))) return [];
+  try {
+    const res = await apiClient.get<BackendApartmentRow[]>(`/projects/${projectId}/apartments`);
+    return (Array.isArray(res) ? res : []).map(mapCompanyApartment);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Real backend: tenants listing (company-scoped)
+//
+// There is no "/company/tenants" endpoint. Tenants are derived from the
+// tenant_id values on apartments belonging to this company's own projects,
+// resolved via the existing GET /tenants/<tenant_id> (best-effort per id).
+// ---------------------------------------------------------------------------
+
+type TenantProfileRow = {
+  user_id?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+};
+
+async function fetchTenantProfile(tenantId: string): Promise<TenantProfileRow | null> {
+  try {
+    return await apiClient.get<TenantProfileRow>(`/tenants/${tenantId}`);
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve unique tenant ids to their profile row. A failed lookup is dropped from the map (skipped), never fabricated. */
+async function resolveTenantProfiles(tenantIds: string[]): Promise<Map<string, TenantProfileRow>> {
+  const unique = [...new Set(tenantIds.filter(Boolean))];
+  const entries = await Promise.all(
+    unique.map(async (id) => [id, await fetchTenantProfile(id)] as const),
+  );
+  const map = new Map<string, TenantProfileRow>();
+  for (const [id, row] of entries) {
+    if (row) map.set(id, row);
+  }
+  return map;
+}
+
+async function fetchCompanyTenants(): Promise<CompanyTenant[]> {
+  const rows = await fetchOwnedApartmentRows();
+  const tenantIds = [
+    ...new Set(
+      rows
+        .map((r) => (r.tenant_id != null && r.tenant_id !== "" ? String(r.tenant_id) : ""))
+        .filter(Boolean),
+    ),
+  ];
+  if (tenantIds.length === 0) return [];
+
+  const profiles = await resolveTenantProfiles(tenantIds);
+
+  // A failed profile lookup is skipped rather than shown with fabricated data,
+  // so one bad tenant_id never breaks the rest of the list.
+  return tenantIds
+    .filter((id) => profiles.has(id))
+    .map((id) => {
+      const profile = profiles.get(id)!;
+      return {
+        id,
+        name: (profile.full_name ?? "").trim(),
+        email: "",
+        phone: (profile.phone ?? "").trim(),
+        nationalId: undefined,
+        notes: undefined,
+        createdAt: "",
+      };
+    });
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
@@ -363,17 +523,17 @@ export const companyApi = {
 
   // ---- tenants
   getTenants: () =>
-    USE_MOCK_API ? mockCompanyService.getTenants() : apiClient.get<CompanyTenant[]>("/company/tenants"),
+    USE_MOCK_API ? mockCompanyService.getTenants() : fetchCompanyTenants(),
   getTenant: (id: string) =>
     USE_MOCK_API ? mockCompanyService.getTenant(id) : apiClient.get<CompanyTenant | null>(`/company/tenants/${id}`),
 
   // ---- apartments
   getApartments: () =>
-    USE_MOCK_API ? mockCompanyService.getApartments() : apiClient.get<Apartment[]>("/company/apartments"),
+    USE_MOCK_API ? mockCompanyService.getApartments() : fetchCompanyApartments(),
   getApartmentsForProject: (projectId: string) =>
     USE_MOCK_API
       ? mockCompanyService.getApartmentsForProject(projectId)
-      : apiClient.get<Apartment[]>(`/company/projects/${projectId}/apartments`),
+      : fetchCompanyApartmentsForProject(projectId),
 };
 
 /**
