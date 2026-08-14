@@ -4,6 +4,7 @@
  */
 import { USE_MOCK_API, AUTH_STORAGE_KEY } from "./config";
 import { apiClient } from "./apiClient";
+import { orderProgressRowsForStages } from "@/lib/stageOrdering";
 import {
   mockCompanyService,
   mockCompanyBus,
@@ -76,6 +77,7 @@ type BackendProgressRow = {
   project_id: string | number | null;
   task_name: string | null;
   status: string | null;
+  start_date: string | null;
   end_date: string | null;
   progress_percent?: number | null;
 };
@@ -538,9 +540,16 @@ function mapCompanyStage(row: BackendProgressRow, key: ProjectStageKey): Company
   };
 }
 
-/** Assigns CANONICAL_STAGE_KEYS positionally within one project's own rows; extra rows clamp to the last key. */
+/**
+ * Orders one project's rows with the same deterministic sequence the Manager
+ * mapping uses (orderProgressRowsForStages) before assigning CANONICAL_STAGE_KEYS
+ * positionally; extra rows clamp to the last key. GET /progress has no
+ * ORDER BY, so without this both portals could resolve a different backend
+ * row to the same stage key.
+ */
 function mapProjectProgressToStages(rows: BackendProgressRow[]): CompanyStage[] {
-  return rows.map((row, idx) =>
+  const ordered = orderProgressRowsForStages(rows);
+  return ordered.map((row, idx) =>
     mapCompanyStage(row, CANONICAL_STAGE_KEYS[Math.min(idx, CANONICAL_STAGE_KEYS.length - 1)]),
   );
 }

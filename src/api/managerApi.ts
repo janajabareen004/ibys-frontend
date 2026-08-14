@@ -5,6 +5,7 @@
  */
 import { USE_MOCK_API, AUTH_STORAGE_KEY } from "./config";
 import { apiClient } from "./apiClient";
+import { orderProgressRowsForStages } from "@/lib/stageOrdering";
 import {
   mockManagerService,
   mockManagerBus,
@@ -130,11 +131,7 @@ function pickCurrentStageKey(stages: ManagedStage[]): ProjectStageKey {
  *  non-completed), ordered by the shared construction sequence. Returns "" when
  *  no real row has a task_name, so the UI falls back to the canonical label. */
 function pickCurrentStageLabel(rows: BackendProgressRow[]): string {
-  const ordered = [...rows].sort((a, b) => {
-    const rank = stageSequenceRank(a.task_name) - stageSequenceRank(b.task_name);
-    if (rank !== 0) return rank;
-    return safeDate(a.start_date).localeCompare(safeDate(b.start_date));
-  });
+  const ordered = orderProgressRowsForStages(rows);
   const current = ordered.find((r) => normalizeStageStatus(r.status) === "current");
   const chosen = current ?? ordered.find((r) => normalizeStageStatus(r.status) !== "completed");
   return (chosen?.task_name ?? "").trim();
@@ -803,8 +800,8 @@ type BackendProgressRow = {
   progress_percent?: number | null;
 };
 
-// Canonical stage keys and the real-world construction sequence — identical to
-// the tenant timeline conventions so both roles order/label stages the same way.
+// Canonical stage keys — identical to the tenant timeline conventions so
+// both roles order/label stages the same way.
 const CANONICAL_STAGE_KEYS: ProjectStageKey[] = [
   "structural",
   "electrical",
@@ -813,17 +810,6 @@ const CANONICAL_STAGE_KEYS: ProjectStageKey[] = [
   "finishing",
   "handover",
 ];
-const STAGE_SEQUENCE: string[] = [
-  "site preparation",
-  "foundation",
-  "structure construction",
-  "electrical installation",
-  "interior finishing",
-];
-function stageSequenceRank(taskName: string | null | undefined): number {
-  const i = STAGE_SEQUENCE.indexOf((taskName ?? "").trim().toLowerCase());
-  return i === -1 ? STAGE_SEQUENCE.length : i;
-}
 
 /** Map a free-form backend progress status to the frontend stage status. */
 function normalizeStageStatus(status: string | null | undefined): ManagedStage["status"] {
@@ -874,9 +860,10 @@ function mapManagedStage(row: BackendProgressRow, key: ProjectStageKey): Managed
 }
 
 /**
- * Group progress rows per project, order each project's rows by the real
- * construction sequence (then start_date), and assign canonical stage keys by
- * index so keys never collide and the sequence is preserved.
+ * Group progress rows per project, order each project's rows using the same
+ * deterministic sequence the Building Company mapping uses (orderProgressRowsForStages),
+ * and assign canonical stage keys by index so keys never collide, the sequence
+ * is preserved, and both portals resolve the same row to the same stage key.
  */
 function mapManagedStages(rows: BackendProgressRow[]): ManagedStage[] {
   const byProject = new Map<string, BackendProgressRow[]>();
@@ -890,11 +877,7 @@ function mapManagedStages(rows: BackendProgressRow[]): ManagedStage[] {
 
   const out: ManagedStage[] = [];
   for (const list of byProject.values()) {
-    const ordered = [...list].sort((a, b) => {
-      const rank = stageSequenceRank(a.task_name) - stageSequenceRank(b.task_name);
-      if (rank !== 0) return rank;
-      return safeDate(a.start_date).localeCompare(safeDate(b.start_date));
-    });
+    const ordered = orderProgressRowsForStages(list);
     ordered.slice(0, CANONICAL_STAGE_KEYS.length).forEach((row, index) => {
       out.push(mapManagedStage(row, CANONICAL_STAGE_KEYS[index]));
     });
