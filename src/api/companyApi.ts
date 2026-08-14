@@ -14,6 +14,7 @@ import {
   type CompanyStageStatus,
   type PhotoAsset,
   type DocumentAsset,
+  type DocumentCategory,
   type UploadItem,
   type CompanyRequest,
   type CompanyMeeting,
@@ -34,6 +35,7 @@ export type {
   CompanyStage,
   PhotoAsset,
   DocumentAsset,
+  DocumentCategory,
   UploadItem,
   CompanyRequest,
   CompanyMeeting,
@@ -492,6 +494,95 @@ async function fetchCompanyTenants(): Promise<CompanyTenant[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: documents (company-scoped)
+//
+// There is no "/company/documents" endpoint. Documents live at the existing
+// GET /projects/<project_id>/documents (per project) plus
+// POST /projects/<project_id>/documents and DELETE /documents/<id> — the same
+// rows Manager/Tenant already read (both MANAGER/BUILDING_COMPANY-guarded for
+// writes). Listing is scoped to this company's owned project ids by fetching
+// each owned project's documents and combining, mirroring
+// fetchOwnedApartmentRows(). The actual file bytes are uploaded to the
+// `project-documents` Supabase Storage bucket by the caller (src/lib/storage.ts,
+// already used by the Manager flow, unchanged here); this module only persists
+// the resulting public URL as file_url.
+// ---------------------------------------------------------------------------
+
+type BackendDocumentRow = {
+  document_id: string | number;
+  project_id: string | number | null;
+  file_name: string | null;
+  upload_date: string | null;
+  category?: string | null;
+  file_url?: string | null;
+};
+
+const DOC_CATEGORIES: DocumentCategory[] = ["contract", "permit", "drawing", "report", "invoice"];
+
+/** Normalize a free-form backend category to a canonical one (defaults to "report", mirroring the Manager document mapping). */
+function normalizeDocumentCategory(value: string | null | undefined): DocumentCategory {
+  const s = (value ?? "").trim().toLowerCase();
+  return (DOC_CATEGORIES as string[]).includes(s) ? (s as DocumentCategory) : "report";
+}
+
+function mapCompanyDocument(row: BackendDocumentRow): DocumentAsset {
+  return {
+    id: String(row.document_id),
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    name: row.file_name ?? "",
+    category: normalizeDocumentCategory(row.category),
+    // The backend documents schema has no size/version/uploader columns — never fabricated.
+    version: "",
+    size: "",
+    uploadedBy: "",
+    uploadedAt: row.upload_date ?? "",
+    url: row.file_url || undefined,
+  };
+}
+
+/** Fetches each owned project's documents in parallel; a single project's failure never breaks the rest of the list. */
+async function fetchCompanyDocuments(): Promise<DocumentAsset[]> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (ownedIds.length === 0) return [];
+  const perProject = await Promise.all(
+    ownedIds.map(async (id) => {
+      try {
+        const res = await apiClient.get<BackendDocumentRow[]>(`/projects/${id}/documents`);
+        return Array.isArray(res) ? res : [];
+      } catch {
+        return [] as BackendDocumentRow[];
+      }
+    }),
+  );
+  return perProject.flat().map(mapCompanyDocument);
+}
+
+/**
+ * Creates a document row for an already-uploaded file. Verifies projectId is
+ * owned by the logged-in company BEFORE calling the backend — the backend's
+ * POST /projects/<id>/documents does not itself enforce project ownership, so
+ * this client-side check (same pattern as createManagerDocument) is the only
+ * ownership gate today. Only ever sends the fields the real table has
+ * (file_name, file_url, category, upload_date); never version/size/uploadedBy.
+ */
+async function createCompanyDocument(
+  input: Parameters<typeof mockCompanyService.addDocument>[0],
+): Promise<DocumentAsset> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (!ownedIds.includes(String(input.projectId))) {
+    throw new Error("This project is not owned by your company.");
+  }
+  const body = {
+    file_name: input.name,
+    file_url: input.fileUrl ?? "",
+    category: input.category,
+    upload_date: new Date().toISOString().slice(0, 10),
+  };
+  const row = await apiClient.post<BackendDocumentRow>(`/projects/${input.projectId}/documents`, body);
+  return mapCompanyDocument(row);
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: construction stages listing (company-scoped)
 //
 // There is no "/company/stages" endpoint. Stages are derived from the same
@@ -602,7 +693,7 @@ export const companyApi = {
   getPhotos: () =>
     USE_MOCK_API ? mockCompanyService.getPhotos() : apiClient.get<PhotoAsset[]>("/company/photos"),
   getDocuments: () =>
-    USE_MOCK_API ? mockCompanyService.getDocuments() : apiClient.get<DocumentAsset[]>("/company/documents"),
+    USE_MOCK_API ? mockCompanyService.getDocuments() : fetchCompanyDocuments(),
   getUploads: () =>
     USE_MOCK_API ? mockCompanyService.getUploads() : apiClient.get<UploadItem[]>("/company/uploads"),
   getRequests: () =>
@@ -684,6 +775,10 @@ export const companyMutations = {
     USE_MOCK_API
       ? mockCompanyService.assignTenantToApartment(apartmentId, tenantId)
       : apiClient.post<Apartment>(`/company/apartments/${apartmentId}/assign`, { tenantId }),
+
+  // documents
+  createDocument: (input: Parameters<typeof mockCompanyService.addDocument>[0]) =>
+    USE_MOCK_API ? mockCompanyService.addDocument(input) : createCompanyDocument(input),
 
   // stages
   updateStage: (id: string, patch: Partial<CompanyStage>) =>

@@ -855,6 +855,12 @@ const he: Dictionary = {
       allCategories: "כל הקטגוריות",
       categories: { contract: "חוזה", permit: "היתר", drawing: "תוכנית", report: "דוח", invoice: "חשבונית" },
       empty: "אין מסמכים התואמים לסינון.",
+      new: "העלה מסמך",
+      form: { name: "שם המסמך", project: "פרויקט", category: "קטגוריה" },
+      chooseFile: "אנא בחר קובץ להעלאה.",
+      chooseProject: "אנא בחר פרויקט.",
+      uploadFailed: "העלאת המסמך נכשלה. אנא נסה שוב.",
+      uploaded: "המסמך הועלה",
     },
     upload: {
       title: "מרכז העלאה",

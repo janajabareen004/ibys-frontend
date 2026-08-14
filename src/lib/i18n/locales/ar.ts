@@ -855,6 +855,12 @@ const ar: Dictionary = {
       allCategories: "كل التصنيفات",
       categories: { contract: "عقد", permit: "تصريح", drawing: "رسم", report: "تقرير", invoice: "فاتورة" },
       empty: "لا توجد مستندات تطابق الفلاتر.",
+      new: "رفع مستند",
+      form: { name: "اسم المستند", project: "المشروع", category: "التصنيف" },
+      chooseFile: "الرجاء اختيار ملف للرفع.",
+      chooseProject: "الرجاء اختيار مشروع.",
+      uploadFailed: "فشل رفع المستند. حاول مرة أخرى.",
+      uploaded: "تم رفع المستند",
     },
     upload: {
       title: "مركز الرفع",

@@ -83,6 +83,8 @@ export type DocumentAsset = {
   size: string;
   uploadedBy: string;
   uploadedAt: string;
+  // Public Storage URL (real backend's file_url). Absent on rows with no real source.
+  url?: string;
 };
 
 export type UploadItem = {
@@ -414,6 +416,23 @@ export const mockCompanyService = {
   getEmployees: () => delay([...EMPLOYEES]),
   getEmployee: (id: string) => delay(EMPLOYEES.find((e) => e.id === id) ?? null),
   getComments: () => delay([...COMMENTS]),
+  addDocument(input: { projectId: string; name: string; category: DocumentCategory; fileUrl?: string }) {
+    const doc: DocumentAsset = {
+      id: uid("dc-"),
+      projectId: input.projectId,
+      name: input.name,
+      category: input.category,
+      // No real size/version/uploader source — never fabricated, same as the real backend mapping.
+      version: "",
+      size: "",
+      uploadedBy: "",
+      uploadedAt: nowIso(),
+      url: input.fileUrl || undefined,
+    };
+    DOCUMENTS.unshift(doc);
+    emit();
+    return doc;
+  },
 
   // ---- project managers
   getProjectManagers: () => delay([...PROJECT_MANAGERS]),

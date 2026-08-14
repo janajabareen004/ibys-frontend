@@ -862,6 +862,12 @@ const en = {
       allCategories: "All categories",
       categories: { contract: "Contract", permit: "Permit", drawing: "Drawing", report: "Report", invoice: "Invoice" },
       empty: "No documents match your filters.",
+      new: "Upload document",
+      form: { name: "Document name", project: "Project", category: "Category" },
+      chooseFile: "Please choose a file to upload.",
+      chooseProject: "Please select a project.",
+      uploadFailed: "Document upload failed. Please try again.",
+      uploaded: "Document uploaded",
     },
     upload: {
       title: "Upload center",

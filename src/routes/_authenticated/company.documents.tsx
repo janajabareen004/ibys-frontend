@@ -11,9 +11,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { UploadDropzone } from "@/components/company/UploadDropzone";
-import { Search, Download, Eye, FileText } from "lucide-react";
+import { CompanyDocumentUploadDialog } from "@/components/company/dialogs/CompanyDocumentUploadDialog";
+import { Search, Download, Eye, FileText, Plus } from "lucide-react";
 import type { DocumentCategory } from "@/mocks/mockCompanyService";
+
+/**
+ * Guards date formatting against empty/invalid values — real document rows can
+ * have no upload_date, and new Date("") is an Invalid Date that would otherwise
+ * make Intl.DateTimeFormat throw RangeError (same failure class fixed on the
+ * Construction Stages page).
+ */
+function safeFormatDocumentDate(
+  formatDate: (d: Date | string | number, opts?: Intl.DateTimeFormatOptions) => string,
+  value: string | undefined | null,
+): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "—" : formatDate(d);
+}
 
 export const Route = createFileRoute("/_authenticated/company/documents")({
   head: () => ({
@@ -27,24 +42,32 @@ export const Route = createFileRoute("/_authenticated/company/documents")({
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data, loading } = useCompanyDocuments();
+  const { data, loading, refetch } = useCompanyDocuments();
   const { data: projects } = useCompanyProjects();
   const [q, setQ] = React.useState("");
   const [category, setCategory] = React.useState<DocumentCategory | "all">("all");
   const [projectId, setProjectId] = React.useState("all");
+  const [uploadOpen, setUploadOpen] = React.useState(false);
 
   const filtered = (data ?? []).filter((d) => {
     const okQ = q ? [d.name, d.uploadedBy].join(" ").toLowerCase().includes(q.toLowerCase()) : true;
     const okC = category === "all" ? true : d.category === category;
-    const okP = projectId === "all" ? true : d.projectId === projectId;
+    const okP = projectId === "all" ? true : String(d.projectId) === String(projectId);
     return okQ && okC && okP;
   });
   const projectName = (id: string) => projects?.find((p) => p.id === id)?.name ?? "—";
 
+  const openDocument = (url: string | undefined) => {
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <RoleGuard allow="BUILDING_COMPANY">
-      <PageHeader title={t("company.documents.title")} description={t("company.documents.description")} />
-      <div className="mb-6"><UploadDropzone label={t("company.upload.dropDocuments")} hint={`${t("company.upload.acceptedDocuments")} · ${t("company.upload.maxSizeValue")}`} /></div>
+      <PageHeader
+        title={t("company.documents.title")}
+        description={t("company.documents.description")}
+        actions={<Button size="sm" onClick={() => setUploadOpen(true)}><Plus className="h-4 w-4" />{t("company.documents.new")}</Button>}
+      />
       <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" aria-hidden />
@@ -89,10 +112,10 @@ function Page() {
                   <TableCell className="text-sm text-muted-foreground">{projectName(d.projectId)}</TableCell>
                   <TableCell><Badge variant="outline" className="text-[10px]">{d.version}</Badge></TableCell>
                   <TableCell className="text-sm text-muted-foreground">{d.size}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(d.uploadedAt)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{safeFormatDocumentDate(formatDate, d.uploadedAt)}</TableCell>
                   <TableCell className="text-end">
-                    <Button variant="ghost" size="sm"><Eye className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm"><Download className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" disabled={!d.url} onClick={() => openDocument(d.url)}><Eye className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" disabled={!d.url} onClick={() => openDocument(d.url)}><Download className="h-4 w-4" /></Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -100,6 +123,12 @@ function Page() {
           </Table>
         </div>
       )}
+      <CompanyDocumentUploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        projects={projects ?? []}
+        onSaved={refetch}
+      />
     </RoleGuard>
   );
 }
