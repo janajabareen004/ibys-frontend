@@ -38,6 +38,10 @@ export type CompanyProject = {
   updatedAt: string;
   description: string;
   team: string[];
+  floors?: number;
+  units?: number;
+  projectType?: string;
+  projectManagerId?: string;
 };
 
 export type CompanyStage = {
