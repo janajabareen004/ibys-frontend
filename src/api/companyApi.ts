@@ -10,6 +10,7 @@ import {
   type CompanyProject,
   type CompanyProjectStatus,
   type CompanyStage,
+  type CompanyStageStatus,
   type PhotoAsset,
   type DocumentAsset,
   type UploadItem,
@@ -488,19 +489,107 @@ async function fetchCompanyTenants(): Promise<CompanyTenant[]> {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: construction stages listing (company-scoped)
+//
+// There is no "/company/stages" endpoint. Stages are derived from the same
+// real progress rows already used for Company Projects (GET /progress via
+// fetchCompanyProgress), kept only for this company's owned project ids.
+// The progress table has no canonical stage-key column, so each project's
+// rows are assigned CANONICAL_STAGE_KEYS positionally (index 0 -> first key,
+// etc.), mirroring the existing pickCurrentStageKey() convention rather than
+// inventing a new one.
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalizes a free-text backend progress status into the strict
+ * CompanyStageStatus union the UI relies on (CompanyStageStatusBadge indexes
+ * a Record by this value with no fallback, so an unrecognized string must
+ * never be passed through as-is). Mirrors the same keyword patterns already
+ * used by stagePercent().
+ */
+function normalizeStageStatus(status: string | null | undefined): CompanyStageStatus {
+  const s = (status ?? "").trim().toLowerCase();
+  if (/(complet|done|finish|closed)/.test(s)) return "completed";
+  if (/(delay|late|behind)/.test(s)) return "delayed";
+  if (/(progress|current|ongoing|active|started)/.test(s)) return "current";
+  return "pending";
+}
+
+function mapCompanyStage(row: BackendProgressRow, key: ProjectStageKey): CompanyStage {
+  const status = normalizeStageStatus(row.status);
+  return {
+    id: String(row.progress_id ?? ""),
+    projectId: row.project_id != null ? String(row.project_id) : "",
+    key,
+    status,
+    progress: stagePercent(row),
+    // No responsible_team/updated_at/notes columns on public.progress — never fabricated.
+    responsibleTeam: "",
+    estimatedCompletion: row.end_date ?? "",
+    actualCompletion: status === "completed" ? (row.end_date ?? undefined) : undefined,
+    delayDays: 0,
+    lastUpdate: "",
+    // No per-stage photo/document/comment linkage exists on the backend.
+    photosCount: 0,
+    documentsCount: 0,
+    commentsCount: 0,
+    notes: "",
+  };
+}
+
+/** Assigns CANONICAL_STAGE_KEYS positionally within one project's own rows; extra rows clamp to the last key. */
+function mapProjectProgressToStages(rows: BackendProgressRow[]): CompanyStage[] {
+  return rows.map((row, idx) =>
+    mapCompanyStage(row, CANONICAL_STAGE_KEYS[Math.min(idx, CANONICAL_STAGE_KEYS.length - 1)]),
+  );
+}
+
+async function fetchCompanyStages(): Promise<CompanyStage[]> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (ownedIds.length === 0) return [];
+  const ownedSet = new Set(ownedIds);
+
+  const allProgress = await fetchCompanyProgress();
+  const ownedProgress = allProgress.filter(
+    (r) => r.project_id != null && ownedSet.has(String(r.project_id)),
+  );
+
+  // Group per project BEFORE assigning stage keys so indexes (and therefore
+  // keys) are computed within each project's own rows, not across projects.
+  const byProject = groupProgressByProject(ownedProgress);
+  const stages: CompanyStage[] = [];
+  for (const rows of byProject.values()) {
+    stages.push(...mapProjectProgressToStages(rows));
+  }
+  return stages;
+}
+
+/** Reuses fetchCompanyStages() so ownership isolation is automatic — never calls GET /progress/<id> directly. */
+async function fetchCompanyStage(stageId: string): Promise<CompanyStage | null> {
+  const stages = await fetchCompanyStages();
+  return stages.find((s) => String(s.id) === String(stageId)) ?? null;
+}
+
+/** Reuses fetchCompanyStages() so ownership isolation is automatic. */
+async function fetchCompanyStagesForProject(projectId: string): Promise<CompanyStage[]> {
+  const stages = await fetchCompanyStages();
+  return stages.filter((s) => String(s.projectId) === String(projectId));
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
   getProject: (id: string) =>
     USE_MOCK_API ? mockCompanyService.getProject(id) : fetchCompanyProject(id),
   getStages: () =>
-    USE_MOCK_API ? mockCompanyService.getStages() : apiClient.get<CompanyStage[]>("/company/stages"),
+    USE_MOCK_API ? mockCompanyService.getStages() : fetchCompanyStages(),
   getStage: (id: string) =>
-    USE_MOCK_API ? mockCompanyService.getStage(id) : apiClient.get<CompanyStage | null>(`/company/stages/${id}`),
+    USE_MOCK_API ? mockCompanyService.getStage(id) : fetchCompanyStage(id),
   getStagesForProject: (projectId: string) =>
     USE_MOCK_API
       ? mockCompanyService.getStagesForProject(projectId)
-      : apiClient.get<CompanyStage[]>(`/company/projects/${projectId}/stages`),
+      : fetchCompanyStagesForProject(projectId),
   getPhotos: () =>
     USE_MOCK_API ? mockCompanyService.getPhotos() : apiClient.get<PhotoAsset[]>("/company/photos"),
   getDocuments: () =>
