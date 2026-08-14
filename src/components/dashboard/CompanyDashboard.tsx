@@ -142,7 +142,7 @@ export function CompanyDashboard() {
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-foreground">{p.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{p.projectManager} · {t(`tenant.timeline.stages.${p.currentStage}`)}</p>
+                      <p className="truncate text-xs text-muted-foreground">{[p.projectManager, t(`tenant.timeline.stages.${p.currentStage}`)].filter((s) => s.trim()).join(" · ")}</p>
                     </div>
                     <div className="hidden w-40 sm:block">
                       <div className="mb-1 flex items-center justify-between text-[11px]">

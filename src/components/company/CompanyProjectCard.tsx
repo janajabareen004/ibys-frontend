@@ -12,6 +12,7 @@ export function CompanyProjectCard({ project: raw, layout = "grid" }: { project:
   const { t, formatDate } = useI18n();
   const project = translateCompanyProject(t, raw);
   const stageLabel = t(`tenant.timeline.stages.${project.currentStage}`);
+  const managerLine = [project.projectManager, project.clientName].filter((s) => s.trim()).join(" · ");
 
   return (
     <Card className="group relative overflow-hidden transition-all hover:shadow-md">
@@ -22,9 +23,11 @@ export function CompanyProjectCard({ project: raw, layout = "grid" }: { project:
               <Link to="/company/projects/$projectId" params={{ projectId: project.id }} className="block truncate text-base font-semibold text-foreground transition-colors hover:text-primary">
                 {project.name}
               </Link>
-              <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
-                <User className="h-3 w-3" aria-hidden /> {project.projectManager} · {project.clientName}
-              </p>
+              {managerLine ? (
+                <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+                  <User className="h-3 w-3" aria-hidden /> {managerLine}
+                </p>
+              ) : null}
             </div>
             <CompanyProjectStatusBadge status={project.status} />
           </div>

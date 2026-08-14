@@ -153,13 +153,41 @@ function groupProgressByProject(rows: BackendProgressRow[]): Map<string, Backend
   return byProject;
 }
 
-function mapCompanyProject(row: BackendProjectRow, progressRows: BackendProgressRow[]): CompanyProject {
+type ManagerProfileRow = {
+  user_id?: string | null;
+  manager_name?: string | null;
+  phone?: string | null;
+};
+
+async function fetchManagerName(managerId: string): Promise<string> {
+  try {
+    const row = await apiClient.get<ManagerProfileRow>(`/managers/${managerId}`);
+    return (row?.manager_name ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Resolve unique manager ids once per list load. Failures become "". */
+async function resolveManagerNames(managerIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(managerIds.filter(Boolean))];
+  const entries = await Promise.all(
+    unique.map(async (id) => [id, await fetchManagerName(id)] as const),
+  );
+  return new Map(entries);
+}
+
+function mapCompanyProject(
+  row: BackendProjectRow,
+  progressRows: BackendProgressRow[],
+  managerName = "",
+): CompanyProject {
   return {
     id: String(row.project_id),
     name: row.project_name ?? "",
     address: row.location ?? "",
     clientName: "",
-    projectManager: "",
+    projectManager: managerName,
     progress: averageProgress(progressRows),
     currentStage: pickCurrentStageKey(progressRows),
     expectedCompletion: latestEndDate(progressRows),
@@ -196,7 +224,16 @@ async function fetchCompanyProjects(): Promise<CompanyProject[]> {
   const owned = (Array.isArray(rows) ? rows : []).filter((r) => isOwnedByCompany(r, companyUserId));
   if (owned.length === 0) return [];
   const byProject = groupProgressByProject(await fetchCompanyProgress());
-  return owned.map((r) => mapCompanyProject(r, byProject.get(String(r.project_id)) ?? []));
+  const names = await resolveManagerNames(
+    owned.map((r) => (r.project_manager_id ? String(r.project_manager_id) : "")),
+  );
+  return owned.map((r) =>
+    mapCompanyProject(
+      r,
+      byProject.get(String(r.project_id)) ?? [],
+      r.project_manager_id ? (names.get(String(r.project_manager_id)) ?? "") : "",
+    ),
+  );
 }
 
 async function fetchCompanyProject(id: string): Promise<CompanyProject | null> {
@@ -214,7 +251,10 @@ async function fetchCompanyProject(id: string): Promise<CompanyProject | null> {
   } catch {
     progress = [];
   }
-  return mapCompanyProject(row, progress);
+  const managerName = row.project_manager_id
+    ? await fetchManagerName(String(row.project_manager_id))
+    : "";
+  return mapCompanyProject(row, progress, managerName);
 }
 
 export const companyApi = {
