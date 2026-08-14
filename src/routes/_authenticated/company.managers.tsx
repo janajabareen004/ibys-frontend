@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RoleGuard } from "@/components/common/RoleGuard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
-import { useCompanyProjectManagers, useCompanyProjects } from "@/hooks/useCompanyData";
+import { useCompanyProjectManagers } from "@/hooks/useCompanyData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,18 +26,11 @@ export const Route = createFileRoute("/_authenticated/company/managers")({
 function Page() {
   const { t } = useI18n();
   const managers = useCompanyProjectManagers();
-  const projects = useCompanyProjects();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editPm, setEditPm] = React.useState<ProjectManagerPerson | null>(null);
 
   const openCreate = () => { setEditPm(null); setDialogOpen(true); };
   const openEdit = (pm: ProjectManagerPerson) => { setEditPm(pm); setDialogOpen(true); };
-
-  const projectsByPm = React.useMemo(() => {
-    const map = new Map<string, number>();
-    (projects.data ?? []).forEach((p) => { map.set(p.projectManager, (map.get(p.projectManager) ?? 0) + 1); });
-    return map;
-  }, [projects.data]);
 
   const list = managers.data ?? [];
 
@@ -67,12 +60,16 @@ function Page() {
               {list.map((pm) => (
                 <TableRow key={pm.id}>
                   <TableCell className="font-medium flex items-center gap-2">
-                    <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-primary/70 to-secondary text-xs font-bold text-primary-foreground">{pm.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}</span>
-                    {pm.name}
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-primary/70 to-secondary text-xs font-bold text-primary-foreground">{(pm.name || "?").split(" ").map((s) => s[0]).slice(0, 2).join("") || "?"}</span>
+                    {pm.name || "—"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground"><span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{pm.email}</span></TableCell>
-                  <TableCell className="text-muted-foreground"><span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{pm.phone}</span></TableCell>
-                  <TableCell><Badge variant="secondary">{projectsByPm.get(pm.name) ?? 0}</Badge></TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {pm.email ? <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{pm.email}</span> : "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {pm.phone ? <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{pm.phone}</span> : "—"}
+                  </TableCell>
+                  <TableCell><Badge variant="secondary">{pm.activeProjects}</Badge></TableCell>
                   <TableCell className="text-end">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(pm)}><Pencil className="h-4 w-4" /></Button>
                   </TableCell>

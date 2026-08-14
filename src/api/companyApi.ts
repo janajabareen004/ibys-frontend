@@ -159,13 +159,17 @@ type ManagerProfileRow = {
   phone?: string | null;
 };
 
-async function fetchManagerName(managerId: string): Promise<string> {
+async function fetchManagerProfile(managerId: string): Promise<ManagerProfileRow | null> {
   try {
-    const row = await apiClient.get<ManagerProfileRow>(`/managers/${managerId}`);
-    return (row?.manager_name ?? "").trim();
+    return await apiClient.get<ManagerProfileRow>(`/managers/${managerId}`);
   } catch {
-    return "";
+    return null;
   }
+}
+
+async function fetchManagerName(managerId: string): Promise<string> {
+  const row = await fetchManagerProfile(managerId);
+  return (row?.manager_name ?? "").trim();
 }
 
 /** Resolve unique manager ids once per list load. Failures become "". */
@@ -175,6 +179,24 @@ async function resolveManagerNames(managerIds: string[]): Promise<Map<string, st
     unique.map(async (id) => [id, await fetchManagerName(id)] as const),
   );
   return new Map(entries);
+}
+
+/** Resolve unique manager ids to their full profile row. Failures become null (kept out of the map). */
+async function resolveManagerProfiles(managerIds: string[]): Promise<Map<string, ManagerProfileRow>> {
+  const unique = [...new Set(managerIds.filter(Boolean))];
+  const entries = await Promise.all(
+    unique.map(async (id) => [id, await fetchManagerProfile(id)] as const),
+  );
+  const map = new Map<string, ManagerProfileRow>();
+  for (const [id, row] of entries) {
+    if (row) map.set(id, row);
+  }
+  return map;
+}
+
+function slugifyManagerName(name: string, fallback: string): string {
+  const trimmed = name.trim().toLowerCase().replace(/\s+/g, "-");
+  return trimmed || fallback;
 }
 
 function mapCompanyProject(
@@ -257,6 +279,47 @@ async function fetchCompanyProject(id: string): Promise<CompanyProject | null> {
   return mapCompanyProject(row, progress, managerName);
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: project managers listing
+//
+// There is no "/company/project-managers" endpoint. We derive the list from
+// the company's own projects: unique project_manager_id values on projects
+// owned by this company, resolved via GET /managers/<id> (best-effort).
+// Active project counts are computed by manager id, not by resolved name.
+// ---------------------------------------------------------------------------
+
+async function fetchCompanyProjectManagers(): Promise<ProjectManagerPerson[]> {
+  const companyUserId = getStoredUserId();
+  if (!companyUserId) return [];
+  const rows = await apiClient.get<BackendProjectRow[]>("/projects");
+  const owned = (Array.isArray(rows) ? rows : []).filter((r) => isOwnedByCompany(r, companyUserId));
+  if (owned.length === 0) return [];
+
+  const activeProjectsByManagerId = new Map<string, number>();
+  for (const r of owned) {
+    if (!r.project_manager_id) continue;
+    const id = String(r.project_manager_id);
+    activeProjectsByManagerId.set(id, (activeProjectsByManagerId.get(id) ?? 0) + 1);
+  }
+  const uniqueIds = [...activeProjectsByManagerId.keys()];
+  if (uniqueIds.length === 0) return [];
+
+  const profiles = await resolveManagerProfiles(uniqueIds);
+
+  return uniqueIds.map((id) => {
+    const profile = profiles.get(id);
+    const name = (profile?.manager_name ?? "").trim();
+    return {
+      id,
+      name,
+      email: "",
+      phone: (profile?.phone ?? "").trim(),
+      avatarSeed: slugifyManagerName(name, id),
+      activeProjects: activeProjectsByManagerId.get(id) ?? 0,
+    };
+  });
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
@@ -293,7 +356,7 @@ export const companyApi = {
 
   // ---- project managers
   getProjectManagers: () =>
-    USE_MOCK_API ? mockCompanyService.getProjectManagers() : apiClient.get<ProjectManagerPerson[]>("/company/project-managers"),
+    USE_MOCK_API ? mockCompanyService.getProjectManagers() : fetchCompanyProjectManagers(),
 
   // ---- tenants
   getTenants: () =>
