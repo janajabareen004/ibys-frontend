@@ -157,6 +157,9 @@ type ManagerProfileRow = {
   user_id?: string | null;
   manager_name?: string | null;
   phone?: string | null;
+  // Resolved server-side from Supabase Auth (not stored on project_managers).
+  // Best-effort: "" or missing if the Auth lookup failed.
+  email?: string | null;
 };
 
 async function fetchManagerProfile(managerId: string): Promise<ManagerProfileRow | null> {
@@ -312,7 +315,7 @@ async function fetchCompanyProjectManagers(): Promise<ProjectManagerPerson[]> {
     return {
       id,
       name,
-      email: "",
+      email: (profile?.email ?? "").trim(),
       phone: (profile?.phone ?? "").trim(),
       avatarSeed: slugifyManagerName(name, id),
       activeProjects: activeProjectsByManagerId.get(id) ?? 0,
