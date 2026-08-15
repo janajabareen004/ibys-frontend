@@ -1051,6 +1051,46 @@ async function fetchCompanyRequests(): Promise<CompanyRequest[]> {
   });
 }
 
+/**
+ * Maps a Company UI status bucket back to the closest real backend status
+ * literal — the exact inverse of normalizeCompanyRequestStatus()'s already-
+ * established convention above, so a write-then-read round trip never
+ * reclassifies the status. The real `requests` table has no "in_progress"
+ * value; "approved" is the existing signal normalizeCompanyRequestStatus()
+ * already reads back as "in_progress", so it is reused rather than inventing
+ * a new backend status string.
+ */
+function toCompanyBackendRequestStatus(status: CompanyRequestStatus): string {
+  switch (status) {
+    case "in_progress":
+      return "approved";
+    case "completed":
+      return "completed";
+    case "rejected":
+      return "rejected";
+    default:
+      return "pending";
+  }
+}
+
+/**
+ * Updates a request's status. Ownership-checked via the company-scoped
+ * request list (fetchCompanyRequests() — derived transitively through owned
+ * projects -> apartments -> tenant_id, same as the listing), then PATCHes
+ * the real `requests` row. routes/requests.py already allows BUILDING_COMPANY
+ * on this route and now also verifies the same ownership chain server-side.
+ */
+async function updateCompanyRequestStatus(id: string, status: CompanyRequestStatus): Promise<CompanyRequest> {
+  const owned = await fetchCompanyRequests();
+  const existing = owned.find((r) => r.id === id);
+  if (!existing) {
+    throw new Error("This request is not owned by your company.");
+  }
+  await apiClient.patch(`/requests/${id}`, { status: toCompanyBackendRequestStatus(status) });
+  const refreshed = await fetchCompanyRequests();
+  return refreshed.find((r) => r.id === id) ?? { ...existing, status };
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: team listing (company-scoped)
 //
@@ -1489,7 +1529,7 @@ export const companyMutations = {
 
   // requests
   setRequestStatus: (id: string, status: CompanyRequest["status"]) =>
-    USE_MOCK_API ? mockCompanyService.setRequestStatus(id, status) : apiClient.post<CompanyRequest>(`/company/requests/${id}/status`, { status }),
+    USE_MOCK_API ? mockCompanyService.setRequestStatus(id, status) : updateCompanyRequestStatus(id, status),
   replyToRequest: (id: string, message: string) =>
     USE_MOCK_API ? mockCompanyService.replyToRequest(id, message) : apiClient.post<CompanyRequest>(`/company/requests/${id}/reply`, { message }),
 

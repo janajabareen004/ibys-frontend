@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_authenticated/company/requests")({
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data, loading } = useCompanyRequests();
+  const { data, loading, refetch } = useCompanyRequests();
   const { data: projects } = useCompanyProjects();
   const { data: employees } = useCompanyEmployees();
   const [q, setQ] = React.useState("");
@@ -58,6 +58,7 @@ function Page() {
   const setStatusFor = async (r: CompanyRequest, s: CompanyRequestStatus, label: string) => {
     try {
       await companyMutations.setRequestStatus(r.id, s);
+      refetch();
       notifySuccess(label);
     } catch {
       notifyError(t("common.error") as string);
