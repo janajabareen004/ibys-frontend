@@ -17,6 +17,8 @@ import {
   type DocumentCategory,
   type UploadItem,
   type CompanyRequest,
+  type CompanyRequestStatus,
+  type TaskPriority,
   type CompanyMeeting,
   type CompanyMeetingStatus,
   type CompanyNotification,
@@ -850,6 +852,124 @@ async function fetchCompanyStagesForProject(projectId: string): Promise<CompanyS
   return stages.filter((s) => String(s.projectId) === String(projectId));
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: tenant requests listing (company-scoped)
+//
+// There is no "/company/requests" endpoint. Requests live at the existing
+// GET /requests (BUILDING_COMPANY sees all rows server-side, same as MANAGER
+// — see routes/requests.py's get_requests()). The `requests` table has no
+// project_id column, so — exactly like managerApi.ts's fetchManagerRequests()
+// — ownership is derived by resolving each request's tenant_id to a project
+// via that tenant's apartment (reusing fetchOwnedApartmentRows(), already
+// scoped to this company's owned projects). Tenant display names are
+// resolved the same way company.tenants.tsx already does, via
+// resolveTenantProfiles()/GET /tenants/<id>.
+// ---------------------------------------------------------------------------
+
+type BackendRequestRow = {
+  request_id: string | number;
+  request_date: string | null;
+  description: string | null;
+  status: string | null;
+  priority: string | null;
+  tenant_id: string | number | null;
+};
+
+/** Guaranteed-valid ISO date string — same convention as safeMeetingDate() above. */
+function safeRequestDate(value: string | null | undefined): string {
+  if (typeof value === "string" && value) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return value;
+  }
+  return new Date().toISOString();
+}
+
+/**
+ * Maps a raw backend status to one of the Company UI's 4 buckets. The real
+ * `requests` table only ever carries pending/approved/rejected in practice
+ * (see routes/requests.py's update_request() and tenantApi.ts's own
+ * mapRequestStatus()) — there is no distinct backend "in_progress" state, so
+ * "approved" is the closest real signal a request has moved past pending,
+ * and is surfaced as "in_progress" here. completed/done map to "completed"
+ * for parity with tenantApi.ts's own completed bucket.
+ */
+function normalizeCompanyRequestStatus(value: string | null | undefined): CompanyRequestStatus {
+  const s = (value ?? "").trim().toLowerCase();
+  if (s.includes("reject") || s.includes("declin")) return "rejected";
+  if (s.includes("complet") || s.includes("done")) return "completed";
+  if (s.includes("approv") || s.includes("accept")) return "in_progress";
+  return "pending";
+}
+
+/** Mirrors managerApi.ts's normalizeRequestPriority() (the same real `priority` column). */
+function normalizeCompanyRequestPriority(value: string | null | undefined): TaskPriority {
+  const s = (value ?? "").trim().toLowerCase();
+  if (s === "low") return "low";
+  if (s === "high") return "high";
+  if (s === "critical") return "critical";
+  return "medium";
+}
+
+function mapCompanyRequest(row: BackendRequestRow, projectId: string, tenantName: string): CompanyRequest {
+  return {
+    id: String(row.request_id),
+    // No category column (tenantApi.ts's createRequest never sends one
+    // either) — default to "photo", mirroring managerApi.ts's
+    // mapManagedRequest() fallback, never fabricated per-row.
+    category: "photo",
+    status: normalizeCompanyRequestStatus(row.status),
+    priority: normalizeCompanyRequestPriority(row.priority),
+    projectId,
+    tenantName,
+    // No real assignment column — left undefined so the UI's optional
+    // "assigned to" line simply doesn't render, rather than showing a
+    // fabricated employee.
+    assignedTo: undefined,
+    description: row.description ?? "",
+    createdAt: safeRequestDate(row.request_date),
+  };
+}
+
+/**
+ * Fetches every request belonging to a tenant housed in one of this
+ * company's owned projects. Ownership is derived transitively: owned
+ * projects -> their apartments -> each apartment's tenant_id -> that
+ * tenant's requests. A request whose tenant_id resolves to no owned
+ * apartment is dropped, so another company's/unrelated tenants' requests
+ * are never exposed.
+ */
+async function fetchCompanyRequests(): Promise<CompanyRequest[]> {
+  const apartmentRows = await fetchOwnedApartmentRows();
+
+  const tenantProject = new Map<string, string>();
+  for (const a of apartmentRows) {
+    if (a.tenant_id != null && a.tenant_id !== "" && a.project_id != null) {
+      const tenantId = String(a.tenant_id);
+      if (!tenantProject.has(tenantId)) tenantProject.set(tenantId, String(a.project_id));
+    }
+  }
+  if (tenantProject.size === 0) return [];
+
+  let rows: BackendRequestRow[];
+  try {
+    const res = await apiClient.get<BackendRequestRow[]>("/requests");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+
+  const scoped = rows.filter((r) => r.tenant_id != null && tenantProject.has(String(r.tenant_id)));
+  if (scoped.length === 0) return [];
+
+  const tenantIds = [...new Set(scoped.map((r) => String(r.tenant_id)))];
+  const profiles = await resolveTenantProfiles(tenantIds);
+
+  return scoped.map((r) => {
+    const tenantId = String(r.tenant_id);
+    return mapCompanyRequest(r, tenantProject.get(tenantId) ?? "", (profiles.get(tenantId)?.full_name ?? "").trim());
+  });
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
@@ -870,7 +990,7 @@ export const companyApi = {
   getUploads: () =>
     USE_MOCK_API ? mockCompanyService.getUploads() : apiClient.get<UploadItem[]>("/company/uploads"),
   getRequests: () =>
-    USE_MOCK_API ? mockCompanyService.getRequests() : apiClient.get<CompanyRequest[]>("/company/requests"),
+    USE_MOCK_API ? mockCompanyService.getRequests() : fetchCompanyRequests(),
   getMeetings: () =>
     USE_MOCK_API ? mockCompanyService.getMeetings() : fetchCompanyMeetings(),
   getNotifications: () =>
