@@ -32,7 +32,7 @@ export const Route = createFileRoute("/_authenticated/company/meetings")({
 
 function Page() {
   const { t } = useI18n();
-  const { data, loading } = useCompanyMeetings();
+  const { data, loading, refetch } = useCompanyMeetings();
   const { data: projects } = useCompanyProjects();
   const [tab, setTab] = React.useState<"upcoming" | "past" | "cancelled" | "rescheduled">("upcoming");
   const [details, setDetails] = React.useState<CompanyMeeting | null>(null);
@@ -90,6 +90,7 @@ function Page() {
         onOpenChange={(o) => { if (!o) { setCreating(false); setEditing(null); } }}
         projects={projects ?? []}
         editing={editing}
+        onSaved={refetch}
       />
     </RoleGuard>
   );
@@ -152,7 +153,7 @@ function MeetingDetailsDialog({ meeting, projectName, onOpenChange }: { meeting:
   );
 }
 
-function MeetingFormDialog({ open, onOpenChange, projects, editing }: { open: boolean; onOpenChange: (o: boolean) => void; projects: CompanyProject[]; editing: CompanyMeeting | null }) {
+function MeetingFormDialog({ open, onOpenChange, projects, editing, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; projects: CompanyProject[]; editing: CompanyMeeting | null; onSaved?: () => void }) {
   const { t } = useI18n();
   const [title, setTitle] = React.useState("");
   const [projectId, setProjectId] = React.useState("");
@@ -201,6 +202,7 @@ function MeetingFormDialog({ open, onOpenChange, projects, editing }: { open: bo
         notifySuccess(t("company.meetings.new") as string);
       }
       onOpenChange(false);
+      onSaved?.();
     } catch { notifyError(t("common.error") as string); }
   };
 

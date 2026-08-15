@@ -594,9 +594,13 @@ async function createCompanyDocument(
 // to this company's owned project ids (fetchOwnedProjectIds()). Field mapping,
 // status normalization, and safe-date handling mirror managerApi.ts's
 // mapManagedMeeting()/normalizeMeetingStatus() exactly so every portal
-// interprets the same underlying meeting row consistently. Meeting mutations
-// (create/update/status/delete) are intentionally left untouched — the real
-// write endpoints are MANAGER-only server-side.
+// interprets the same underlying meeting row consistently.
+//
+// CREATE reuses the same POST /projects/<project_id>/meetings endpoint the
+// Manager portal already uses (now also BUILDING_COMPANY-authorized server
+// side, with a server-side project-ownership check for that role). Update /
+// status / delete are intentionally left untouched — those real write
+// endpoints remain MANAGER-only server-side.
 // ---------------------------------------------------------------------------
 
 type BackendMeetingRow = {
@@ -681,6 +685,74 @@ async function fetchCompanyMeetings(): Promise<CompanyMeeting[]> {
   return rows
     .filter((m) => m.project_id != null && ownedSet.has(String(m.project_id)))
     .map(mapCompanyMeeting);
+}
+
+/** Split an ISO datetime into the backend's separate date/time columns — same convention as managerApi.ts's toMeetingDateTime(). */
+function toCompanyMeetingDateTime(iso: string): { meeting_date: string; meeting_time: string } {
+  const d = new Date(iso);
+  const pad = (n: number) => `${n}`.padStart(2, "0");
+  return {
+    meeting_date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    meeting_time: `${pad(d.getHours())}:${pad(d.getMinutes())}:00`,
+  };
+}
+
+/** Map a UI status bucket to a persisted backend status string — same convention as managerApi.ts's toBackendStatus(). */
+function toCompanyBackendMeetingStatus(status: CompanyMeetingStatus | undefined): string {
+  switch (status) {
+    case "cancelled":
+      return "CANCELLED";
+    case "rescheduled":
+      return "RESCHEDULED";
+    case "past":
+      return "COMPLETED";
+    default:
+      return "PENDING"; // upcoming | today are re-derived from the date on read
+  }
+}
+
+/**
+ * Creates a meeting for an owned project. Verifies ownership client-side
+ * (defense-in-depth; the real gate is now server-side in routes/meetings.py)
+ * via the existing fetchOwnedProjectIds(), then derives project_manager_id
+ * from the selected project's OWN real assigned manager — never the Building
+ * Company's own user id, and never fabricated when the project has no
+ * assigned manager (sent as null, same as an unassigned project would have
+ * on creation via any other flow). Only sends fields the real `meetings`
+ * table has; agenda/notes are dropped (no backend source, never persisted).
+ */
+async function createCompanyMeeting(
+  input: Parameters<typeof mockCompanyService.createMeeting>[0],
+): Promise<CompanyMeeting> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (!ownedIds.includes(String(input.projectId))) {
+    throw new Error("This project is not owned by your company.");
+  }
+
+  let projectManagerId: string | null = null;
+  try {
+    const rows = await apiClient.get<BackendProjectRow[]>("/projects");
+    const project = (Array.isArray(rows) ? rows : []).find(
+      (r) => String(r.project_id) === String(input.projectId),
+    );
+    projectManagerId = project?.project_manager_id ? String(project.project_manager_id) : null;
+  } catch {
+    projectManagerId = null;
+  }
+
+  const { meeting_date, meeting_time } = toCompanyMeetingDateTime(input.when);
+  const body = {
+    meeting_date,
+    meeting_time,
+    purpose: input.title,
+    status: toCompanyBackendMeetingStatus(input.status),
+    location: input.location ?? "",
+    duration_min: input.durationMin ?? 0,
+    participants: (input.participants ?? []).join(", "),
+    project_manager_id: projectManagerId,
+  };
+  const row = await apiClient.post<BackendMeetingRow>(`/projects/${input.projectId}/meetings`, body);
+  return mapCompanyMeeting(row);
 }
 
 // ---------------------------------------------------------------------------
@@ -889,7 +961,7 @@ export const companyMutations = {
 
   // meetings
   createMeeting: (input: Parameters<typeof mockCompanyService.createMeeting>[0]) =>
-    USE_MOCK_API ? mockCompanyService.createMeeting(input) : apiClient.post<CompanyMeeting>("/company/meetings", input),
+    USE_MOCK_API ? mockCompanyService.createMeeting(input) : createCompanyMeeting(input),
   updateMeeting: (id: string, patch: Partial<CompanyMeeting>) =>
     USE_MOCK_API ? mockCompanyService.updateMeeting(id, patch) : apiClient.patch<CompanyMeeting>(`/company/meetings/${id}`, patch),
   setMeetingStatus: (id: string, status: CompanyMeeting["status"]) =>
