@@ -1170,6 +1170,75 @@ async function fetchCompanyActivity(): Promise<CompanyActivity[]> {
     .map(mapCompanyActivity);
 }
 
+// ---------------------------------------------------------------------------
+// Notifications — reuses the manager_notifications table/service/endpoints as
+// a generic recipient-based inbox. The backend scopes every read and mutation
+// to recipient_id === g.current_user_id regardless of role, so a Building
+// Company only ever sees/modifies its own rows; nothing here trusts or
+// re-derives ownership on the client. Mirrors managerApi.ts's mapping 1:1.
+// ---------------------------------------------------------------------------
+
+type BackendManagerNotificationRow = {
+  id: string | number;
+  recipient_id?: string | null;
+  project_id?: string | number | null;
+  type: string | null;
+  title: string | null;
+  message: string | null;
+  is_read: boolean | null;
+  created_at: string | null;
+};
+
+// The category vocabulary the Company Notifications UI renders. Unknown/
+// not-yet-applicable backend types (e.g. "task", "meeting" rows addressed to
+// a manager instead) safely fall back to "system" rather than crash or be
+// recategorized as something they aren't.
+const COMPANY_NOTIFICATION_CATEGORIES: ReadonlySet<CompanyNotification["category"]> = new Set([
+  "project",
+  "construction",
+  "upload",
+  "meeting",
+  "request",
+  "system",
+]);
+
+function toCompanyNotificationCategory(raw: string | null): CompanyNotification["category"] {
+  const value = (raw ?? "").trim().toLowerCase() as CompanyNotification["category"];
+  return COMPANY_NOTIFICATION_CATEGORIES.has(value) ? value : "system";
+}
+
+function mapCompanyNotification(row: BackendManagerNotificationRow): CompanyNotification {
+  return {
+    id: String(row.id),
+    category: toCompanyNotificationCategory(row.type),
+    title: row.title ?? "",
+    body: row.message ?? "",
+    createdAt: safeActivityDate(row.created_at),
+    read: row.is_read ?? false,
+  };
+}
+
+// The backend endpoint is already scoped to the authenticated recipient, so no
+// client-side ownership filtering is needed (or trusted) here.
+async function fetchCompanyNotifications(): Promise<CompanyNotification[]> {
+  let rows: BackendManagerNotificationRow[];
+  try {
+    const res = await apiClient.get<BackendManagerNotificationRow[]>("/manager/notifications");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return rows.map(mapCompanyNotification);
+}
+
+async function markCompanyNotificationRead(id: string, read: boolean): Promise<void> {
+  await apiClient.patch(`/manager/notifications/${id}/read`, { read });
+}
+
+async function markAllCompanyNotificationsRead(): Promise<void> {
+  await apiClient.post(`/manager/notifications/read-all`, {});
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
@@ -1194,7 +1263,7 @@ export const companyApi = {
   getMeetings: () =>
     USE_MOCK_API ? mockCompanyService.getMeetings() : fetchCompanyMeetings(),
   getNotifications: () =>
-    USE_MOCK_API ? mockCompanyService.getNotifications() : apiClient.get<CompanyNotification[]>("/company/notifications"),
+    USE_MOCK_API ? mockCompanyService.getNotifications() : fetchCompanyNotifications(),
   getActivity: () =>
     USE_MOCK_API ? mockCompanyService.getActivity() : fetchCompanyActivity(),
   getEmployees: () =>
@@ -1294,4 +1363,10 @@ export const companyMutations = {
     USE_MOCK_API ? mockCompanyService.setRequestStatus(id, status) : apiClient.post<CompanyRequest>(`/company/requests/${id}/status`, { status }),
   replyToRequest: (id: string, message: string) =>
     USE_MOCK_API ? mockCompanyService.replyToRequest(id, message) : apiClient.post<CompanyRequest>(`/company/requests/${id}/reply`, { message }),
+
+  // notifications (reuses manager_notifications; backend enforces recipient_id === caller)
+  markNotificationRead: (id: string, read = true) =>
+    USE_MOCK_API ? Promise.resolve(mockCompanyService.markNotificationRead(id, read)) : markCompanyNotificationRead(id, read),
+  markAllNotificationsRead: () =>
+    USE_MOCK_API ? Promise.resolve(mockCompanyService.markAllNotificationsRead()) : markAllCompanyNotificationsRead(),
 };

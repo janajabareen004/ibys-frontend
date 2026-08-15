@@ -427,6 +427,16 @@ export const mockCompanyService = {
   getRequests: () => delay([...REQUESTS]),
   getMeetings: () => delay([...MEETINGS]),
   getNotifications: () => delay([...NOTIFICATIONS]),
+  markNotificationRead(id: string, read = true) {
+    const n = NOTIFICATIONS.find((n) => n.id === id);
+    if (!n) return;
+    n.read = read;
+    emit();
+  },
+  markAllNotificationsRead() {
+    NOTIFICATIONS.forEach((n) => { n.read = true; });
+    emit();
+  },
   getActivity: () => delay([...ACTIVITY]),
   getEmployees: () => delay([...EMPLOYEES]),
   getEmployee: (id: string) => delay(EMPLOYEES.find((e) => e.id === id) ?? null),
