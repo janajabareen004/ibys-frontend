@@ -62,6 +62,11 @@ export function ManagerDashboard() {
   const upcoming = meetingsList.filter((m) => m.status === "upcoming" || m.status === "today").length;
   const completedThisWeek = tasksList.filter((t) => t.status === "completed").length;
   const unread = notificationsList.filter((n) => !n.read).length;
+  // Most-recently-uploaded first (real upload_date), capped at the widget's
+  // existing 6-tile (3-col x 2-row) layout — never a fabricated ordering.
+  const recentPhotos = [...(photos.data ?? [])]
+    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
+    .slice(0, 6);
   const portfolioProgress = projectsList.length
     ? Math.round(projectsList.reduce((s, p) => s + p.progress, 0) / projectsList.length)
     : 0;
@@ -272,9 +277,15 @@ export function ManagerDashboard() {
 
         <SectionCard title={t("manager.pm.widgets.recentPhotos")} action={<Button asChild variant="ghost" size="sm"><Link to="/manager/photos">{t("manager.actions.viewAll")}</Link></Button>}>
           <div className="grid grid-cols-3 gap-2">
-            {(photos.data ?? []).slice(0, 6).map((ph) => (
-              <div key={ph.id} className="relative aspect-square overflow-hidden rounded-lg" style={{ background: `linear-gradient(135deg, ${ph.color}, ${ph.color}bb)` }}>
-                <ImageIcon className="absolute inset-0 m-auto h-5 w-5 text-white/70" aria-hidden />
+            {recentPhotos.map((ph) => (
+              <div key={ph.id} className="relative aspect-square overflow-hidden rounded-lg">
+                {ph.url ? (
+                  <img src={ph.url} alt={ph.title} loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${ph.color}, ${ph.color}bb)` }}>
+                    <ImageIcon className="absolute inset-0 m-auto h-5 w-5 text-white/70" aria-hidden />
+                  </div>
+                )}
               </div>
             ))}
           </div>
