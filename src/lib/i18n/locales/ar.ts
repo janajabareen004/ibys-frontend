@@ -816,7 +816,7 @@ const ar: Dictionary = {
       comments: "التعليقات",
       publish: "نشر التحديث",
       cancel: "إلغاء",
-      apiHint: "هذا النموذج جاهز للتكامل مع الخلفية.",
+      apiHint: "يتم حفظ نسبة التقدم وتاريخ التسليم المتوقع في السجل الحقيقي لهذا المشروع.",
     },
     photos: {
       title: "إدارة الصور",
@@ -966,6 +966,12 @@ const ar: Dictionary = {
       workload: "حجم العمل",
       states: { available: "متاح", on_site: "في الموقع", off: "خارج الدوام" },
       empty: "لا يوجد أعضاء يطابقون الفلاتر.",
+      addMember: "إضافة عضو",
+      addTitle: "إضافة عضو فريق",
+      name: "الاسم",
+      email: "البريد الإلكتروني",
+      phone: "الهاتف",
+      project: "المشروع",
     },
     activity: {
       title: "سجل النشاط",
@@ -1141,6 +1147,7 @@ const ar: Dictionary = {
         apartmentUpdated: "تم تحديث الشقة",
         apartmentDeleted: "تمت إزالة الشقة",
         apartmentAssigned: "تم تحديث التعيين",
+        teamMemberCreated: "تمت إضافة عضو الفريق",
       },
     },
     projectData: {

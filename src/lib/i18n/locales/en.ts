@@ -823,7 +823,7 @@ const en = {
       comments: "Comments",
       publish: "Publish update",
       cancel: "Cancel",
-      apiHint: "This form is prepared for backend integration.",
+      apiHint: "Progress and expected completion are saved to this project's real record.",
     },
     photos: {
       title: "Photo management",
@@ -973,6 +973,12 @@ const en = {
       workload: "Workload",
       states: { available: "Available", on_site: "On site", off: "Off" },
       empty: "No team members match your filters.",
+      addMember: "Add member",
+      addTitle: "Add team member",
+      name: "Name",
+      email: "Email",
+      phone: "Phone",
+      project: "Project",
     },
     activity: {
       title: "Activity log",
@@ -1148,6 +1154,7 @@ const en = {
         apartmentUpdated: "Apartment updated",
         apartmentDeleted: "Apartment removed",
         apartmentAssigned: "Assignment updated",
+        teamMemberCreated: "Team member added",
       },
     },
     projectData: {

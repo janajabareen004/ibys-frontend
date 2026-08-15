@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { CompanyStageStatusBadge } from "./CompanyStageStatusBadge";
@@ -36,7 +35,6 @@ export function StageManagementCard({ stage, projectName }: { stage: CompanyStag
   const { t, formatDate } = useI18n();
   const [open, setOpen] = React.useState(false);
   const [progress, setProgress] = React.useState(stage.progress);
-  const [notes, setNotes] = React.useState("");
   const [expected, setExpected] = React.useState(stage.estimatedCompletion.slice(0, 10));
   const [saving, setSaving] = React.useState(false);
 
@@ -44,7 +42,6 @@ export function StageManagementCard({ stage, projectName }: { stage: CompanyStag
     if (open) {
       setProgress(stage.progress);
       setExpected(stage.estimatedCompletion.slice(0, 10));
-      setNotes("");
     }
   }, [open, stage]);
 
@@ -53,7 +50,6 @@ export function StageManagementCard({ stage, projectName }: { stage: CompanyStag
     try {
       await companyMutations.updateStage(stage.id, {
         progress,
-        notes: notes.trim() || stage.notes,
         estimatedCompletion: expected ? new Date(expected).toISOString() : stage.estimatedCompletion,
       });
       notifySuccess(t("company.updateStage.publish") as string);
@@ -136,10 +132,6 @@ export function StageManagementCard({ stage, projectName }: { stage: CompanyStag
             <div className="grid gap-2">
               <Label htmlFor={`expected-${stage.id}`}>{t("company.updateStage.expectedCompletion")}</Label>
               <Input id={`expected-${stage.id}`} type="date" value={expected} onChange={(e) => setExpected(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor={`notes-${stage.id}`}>{t("company.updateStage.completionNotes")}</Label>
-              <Textarea id={`notes-${stage.id}`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("company.updateStage.completionNotesPlaceholder")} rows={4} />
             </div>
           </div>
           <DialogFooter>

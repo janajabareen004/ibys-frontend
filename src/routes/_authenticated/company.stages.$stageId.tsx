@@ -19,7 +19,6 @@ import { CompanyStageStatusBadge } from "@/components/company/CompanyStageStatus
 import { PhotoCard } from "@/components/company/PhotoCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +45,6 @@ function Page() {
   const activity = useCompanyActivity();
 
   const [progress, setProgress] = React.useState(stage.data?.progress ?? 0);
-  const [notes, setNotes] = React.useState("");
   const [expected, setExpected] = React.useState("");
   const [comment, setComment] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -95,28 +93,21 @@ function Page() {
                 <Label htmlFor="expected">{t("company.updateStage.expectedCompletion")}</Label>
                 <Input id="expected" type="date" value={expected} onChange={(e) => setExpected(e.target.value)} />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="notes">{t("company.updateStage.completionNotes")}</Label>
-                <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("company.updateStage.completionNotesPlaceholder")} rows={5} />
-              </div>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={saving} onClick={async () => {
                   setSaving(true);
                   try {
                     await companyMutations.updateStage(s.id, {
                       progress,
-                      notes: notes.trim() || s.notes,
                       estimatedCompletion: expected ? new Date(expected).toISOString() : s.estimatedCompletion,
                     });
                     notifySuccess(t("company.updateStage.publish") as string);
-                    setNotes("");
                   } catch { notifyError(t("common.error") as string); }
                   finally { setSaving(false); }
                 }}><Send className="h-4 w-4" />{t("company.updateStage.publish")}</Button>
                 <Button size="sm" variant="outline" onClick={() => {
                   setProgress(s.progress);
                   setExpected(s.estimatedCompletion.slice(0, 10));
-                  setNotes("");
                 }}>{t("company.updateStage.cancel")}</Button>
               </div>
               <p className="text-[11px] text-muted-foreground">{t("company.updateStage.apiHint")}</p>

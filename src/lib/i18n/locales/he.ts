@@ -816,7 +816,7 @@ const he: Dictionary = {
       comments: "תגובות",
       publish: "פרסם עדכון",
       cancel: "ביטול",
-      apiHint: "טופס זה מוכן לשילוב עם ה‑backend.",
+      apiHint: "אחוז ההתקדמות ותאריך המסירה הצפוי נשמרים ברשומה האמיתית של הפרויקט.",
     },
     photos: {
       title: "ניהול תמונות",
@@ -966,6 +966,12 @@ const he: Dictionary = {
       workload: "עומס",
       states: { available: "זמין", on_site: "באתר", off: "לא זמין" },
       empty: "אין חברי צוות התואמים לסינון.",
+      addMember: "הוסף איש צוות",
+      addTitle: "הוספת איש צוות",
+      name: "שם",
+      email: "אימייל",
+      phone: "טלפון",
+      project: "פרויקט",
     },
     activity: {
       title: "יומן פעילות",
@@ -1141,6 +1147,7 @@ const he: Dictionary = {
         apartmentUpdated: "דירה עודכנה",
         apartmentDeleted: "דירה הוסרה",
         apartmentAssigned: "השיוך עודכן",
+        teamMemberCreated: "איש הצוות נוסף",
       },
     },
     projectData: {

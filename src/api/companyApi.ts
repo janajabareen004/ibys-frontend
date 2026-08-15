@@ -908,6 +908,31 @@ async function fetchCompanyStagesForProject(projectId: string): Promise<CompanyS
   return stages.filter((s) => String(s.projectId) === String(projectId));
 }
 
+/**
+ * Updates the real progress row backing a stage (CompanyStage.id ===
+ * progress_id — see mapCompanyStage()). Ownership-checked via
+ * fetchCompanyStage() (itself built on fetchOwnedProjectIds()), then PUTs
+ * only the real progress_percent/end_date columns. There is no `notes`
+ * column on public.progress, so notes is never sent — the Company update UI
+ * no longer offers it, rather than silently discarding it. Status is left
+ * untouched: this dialog never edits it.
+ */
+async function updateCompanyStage(id: string, patch: Partial<CompanyStage>): Promise<CompanyStage> {
+  const existing = await fetchCompanyStage(id);
+  if (!existing) {
+    throw new Error("This stage is not owned by your company.");
+  }
+  const body: { progress_percent?: number; end_date?: string } = {};
+  if (patch.progress !== undefined) {
+    body.progress_percent = patch.progress;
+  }
+  if (patch.estimatedCompletion) {
+    body.end_date = patch.estimatedCompletion.slice(0, 10);
+  }
+  await apiClient.put(`/progress/${id}`, body);
+  return (await fetchCompanyStage(id)) ?? existing;
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: tenant requests listing (company-scoped)
 //
@@ -1443,7 +1468,7 @@ export const companyMutations = {
 
   // stages
   updateStage: (id: string, patch: Partial<CompanyStage>) =>
-    USE_MOCK_API ? mockCompanyService.updateStage(id, patch) : apiClient.patch<CompanyStage>(`/company/stages/${id}`, patch),
+    USE_MOCK_API ? mockCompanyService.updateStage(id, patch) : updateCompanyStage(id, patch),
   addStageComment: (input: Parameters<typeof mockCompanyService.addStageComment>[0]) =>
     USE_MOCK_API ? mockCompanyService.addStageComment(input) : apiClient.post<CompanyComment>(`/company/stages/comments`, input),
 
