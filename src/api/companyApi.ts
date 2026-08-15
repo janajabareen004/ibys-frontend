@@ -970,6 +970,112 @@ async function fetchCompanyRequests(): Promise<CompanyRequest[]> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: team listing (company-scoped)
+//
+// There is no "/company/team" endpoint. Team members live at the existing
+// GET /team (public.team_members — a project-scoped roster row: name, role,
+// email, phone, availability; each row belongs to exactly ONE project, there
+// is no user_id/login backing it and no building_company_id column at all).
+// Ownership is derived the same way as documents/meetings/requests: keep only
+// rows whose project_id is in fetchOwnedProjectIds(). Mirrors managerApi.ts's
+// fetchManagerTeam()/mapEmployee() exactly, including its Phase-1 workload
+// approximation (computed from real tasks, never fabricated — 0 when there
+// are no matching tasks) so the same person's workload reads consistently
+// whether viewed by their manager or by the owning Building Company.
+// ---------------------------------------------------------------------------
+
+type BackendTeamMemberRow = {
+  member_id: string | number;
+  project_id: string | number | null;
+  name: string | null;
+  role: string | null;
+  email: string | null;
+  phone: string | null;
+  availability: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/** Minimal task shape needed for the workload approximation below (GET /tasks — same table managerApi.ts reads). */
+type BackendTaskRowForWorkload = {
+  project_id: string | number | null;
+  assigned_to: string | null;
+  status: string | null;
+};
+
+/** Backend availability is available/busy/off; the Company UI's vocabulary uses "on_site" instead of "busy". */
+function normalizeCompanyAvailability(value: string | null | undefined): CompanyEmployee["availability"] {
+  const v = (value ?? "").trim().toLowerCase();
+  if (v === "busy") return "on_site";
+  if (v === "off") return "off";
+  return "available";
+}
+
+/**
+ * Phase-1 workload approximation — identical convention to managerApi.ts's
+ * computeWorkload(): count the member's active (non-completed) tasks by
+ * matching tasks.assigned_to text against the member name, scaled to a
+ * percentage. There is no stored workload column; 0 when nothing matches.
+ */
+function computeCompanyWorkload(name: string | null | undefined, tasks: BackendTaskRowForWorkload[]): number {
+  const key = (name ?? "").trim().toLowerCase();
+  if (!key) return 0;
+  const active = tasks.filter(
+    (t) => (t.assigned_to ?? "").trim().toLowerCase() === key && (t.status ?? "").trim().toLowerCase() !== "completed",
+  ).length;
+  return Math.max(0, Math.min(100, active * 25));
+}
+
+function mapCompanyEmployee(row: BackendTeamMemberRow, workload: number): CompanyEmployee {
+  return {
+    id: String(row.member_id),
+    name: row.name ?? "",
+    role: row.role ?? "",
+    email: row.email ?? "",
+    phone: row.phone ?? "",
+    availability: normalizeCompanyAvailability(row.availability),
+    workload,
+    // Each real row belongs to exactly one project — never fabricated as a
+    // multi-project assignment.
+    projectIds: row.project_id != null ? [String(row.project_id)] : [],
+    // No stage link exists on team_members — never fabricated.
+    currentStage: undefined,
+    lastActive: safeRequestDate(row.updated_at ?? row.created_at),
+  };
+}
+
+/** Fetches every team member whose project is owned by this company; a single project's failure never breaks the rest of the list. */
+async function fetchCompanyTeam(): Promise<CompanyEmployee[]> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (ownedIds.length === 0) return [];
+  const ownedSet = new Set(ownedIds);
+
+  let rows: BackendTeamMemberRow[];
+  try {
+    const res = await apiClient.get<BackendTeamMemberRow[]>("/team");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  const members = rows.filter((r) => r.project_id != null && ownedSet.has(String(r.project_id)));
+  if (members.length === 0) return [];
+
+  // Best-effort workload signal from the same owned projects' real tasks —
+  // a failed fetch just leaves everyone at workload 0, never fabricated.
+  let tasks: BackendTaskRowForWorkload[] = [];
+  try {
+    const res = await apiClient.get<BackendTaskRowForWorkload[]>("/tasks");
+    tasks = (Array.isArray(res) ? res : []).filter(
+      (t) => t.project_id != null && ownedSet.has(String(t.project_id)),
+    );
+  } catch {
+    tasks = [];
+  }
+
+  return members.map((r) => mapCompanyEmployee(r, computeCompanyWorkload(r.name, tasks)));
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
@@ -998,7 +1104,7 @@ export const companyApi = {
   getActivity: () =>
     USE_MOCK_API ? mockCompanyService.getActivity() : apiClient.get<CompanyActivity[]>("/company/activity"),
   getEmployees: () =>
-    USE_MOCK_API ? mockCompanyService.getEmployees() : apiClient.get<CompanyEmployee[]>("/company/team"),
+    USE_MOCK_API ? mockCompanyService.getEmployees() : fetchCompanyTeam(),
   getEmployee: (id: string) =>
     USE_MOCK_API ? mockCompanyService.getEmployee(id) : apiClient.get<CompanyEmployee | null>(`/company/team/${id}`),
   getComments: () =>
