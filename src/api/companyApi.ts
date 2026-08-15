@@ -758,6 +758,61 @@ async function createCompanyMeeting(
   return mapCompanyMeeting(row);
 }
 
+/**
+ * Resolves a meeting from the company-scoped meeting list (fetchCompanyMeetings(),
+ * the same real, ownership-filtered read used by the Meetings page) and throws
+ * if it doesn't exist or isn't owned by this company. Every mutation below
+ * checks ownership through this before writing, in addition to the server-side
+ * check in routes/meetings.py.
+ */
+async function getOwnedCompanyMeeting(id: string): Promise<CompanyMeeting> {
+  const owned = await fetchCompanyMeetings();
+  const existing = owned.find((m) => m.id === id);
+  if (!existing) {
+    throw new Error("This meeting is not owned by your company.");
+  }
+  return existing;
+}
+
+/** Approve a meeting via a status-only PUT /meetings/<id> — same "APPROVED" convention as managerApi.ts's approveManagerMeeting(). */
+async function approveCompanyMeeting(id: string): Promise<CompanyMeeting> {
+  await getOwnedCompanyMeeting(id);
+  const row = await apiClient.put<BackendMeetingRow>(`/meetings/${id}`, { status: "APPROVED" });
+  return mapCompanyMeeting(row);
+}
+
+/** Reject (cancel) a meeting via a status-only PUT /meetings/<id> — reuses the existing "CANCELLED" convention (see toCompanyBackendMeetingStatus()). */
+async function rejectCompanyMeeting(id: string): Promise<CompanyMeeting> {
+  await getOwnedCompanyMeeting(id);
+  const row = await apiClient.put<BackendMeetingRow>(`/meetings/${id}`, { status: "CANCELLED" });
+  return mapCompanyMeeting(row);
+}
+
+/**
+ * General meeting update — used for Reschedule. Ownership-checked via
+ * getOwnedCompanyMeeting(), then merges the patch onto the existing real
+ * fields before sending the FULL real body (mirrors managerApi.ts's
+ * toMeetingBody() convention) so a partial edit never blanks out unrelated
+ * real columns. agenda/notes are never sent — no backend columns exist for
+ * them, matching createCompanyMeeting().
+ */
+async function updateCompanyMeeting(id: string, patch: Partial<CompanyMeeting>): Promise<CompanyMeeting> {
+  const existing = await getOwnedCompanyMeeting(id);
+  const merged = { ...existing, ...patch };
+  const { meeting_date, meeting_time } = toCompanyMeetingDateTime(merged.when);
+  const body = {
+    meeting_date,
+    meeting_time,
+    purpose: merged.title,
+    status: toCompanyBackendMeetingStatus(merged.status),
+    location: merged.location ?? "",
+    duration_min: merged.durationMin ?? 0,
+    participants: (merged.participants ?? []).join(", "),
+  };
+  const row = await apiClient.put<BackendMeetingRow>(`/meetings/${id}`, body);
+  return mapCompanyMeeting(row);
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: construction stages listing (company-scoped)
 //
@@ -1077,6 +1132,46 @@ async function fetchCompanyTeam(): Promise<CompanyEmployee[]> {
   return members.map((r) => mapCompanyEmployee(r, computeCompanyWorkload(r.name, tasks)));
 }
 
+/** Maps the Company UI's availability vocabulary to the real team_members allow-list ("available" | "busy" | "off"). */
+function toCompanyBackendAvailability(value: CompanyEmployee["availability"] | undefined): string {
+  if (value === "on_site") return "busy";
+  if (value === "off") return "off";
+  return "available";
+}
+
+/**
+ * Creates a team member for an owned project. Verifies ownership client-side
+ * (defense-in-depth; the real gate is server-side in routes/team.py) via the
+ * existing fetchOwnedProjectIds(), then POSTs only the real team_members
+ * fields (project_id comes from the URL, never the body). The freshly
+ * created row is mapped through the SAME mapCompanyEmployee() used for the
+ * Team listing, with workload 0 (a brand-new member has no tasks yet — never
+ * fabricated).
+ */
+async function createCompanyTeamMember(input: {
+  projectId: string;
+  name: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  availability?: CompanyEmployee["availability"];
+}): Promise<CompanyEmployee> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (!ownedIds.includes(String(input.projectId))) {
+    throw new Error("This project is not owned by your company.");
+  }
+
+  const body = {
+    name: input.name,
+    role: input.role || undefined,
+    email: input.email || undefined,
+    phone: input.phone || undefined,
+    availability: toCompanyBackendAvailability(input.availability),
+  };
+  const row = await apiClient.post<BackendTeamMemberRow>(`/projects/${input.projectId}/team`, body);
+  return mapCompanyEmployee(row, 0);
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: activity log (company-scoped)
 //
@@ -1342,6 +1437,10 @@ export const companyMutations = {
   createDocument: (input: Parameters<typeof mockCompanyService.addDocument>[0]) =>
     USE_MOCK_API ? mockCompanyService.addDocument(input) : createCompanyDocument(input),
 
+  // team
+  createTeamMember: (input: Parameters<typeof mockCompanyService.addEmployee>[0]) =>
+    USE_MOCK_API ? mockCompanyService.addEmployee(input) : createCompanyTeamMember(input),
+
   // stages
   updateStage: (id: string, patch: Partial<CompanyStage>) =>
     USE_MOCK_API ? mockCompanyService.updateStage(id, patch) : apiClient.patch<CompanyStage>(`/company/stages/${id}`, patch),
@@ -1352,9 +1451,14 @@ export const companyMutations = {
   createMeeting: (input: Parameters<typeof mockCompanyService.createMeeting>[0]) =>
     USE_MOCK_API ? mockCompanyService.createMeeting(input) : createCompanyMeeting(input),
   updateMeeting: (id: string, patch: Partial<CompanyMeeting>) =>
-    USE_MOCK_API ? mockCompanyService.updateMeeting(id, patch) : apiClient.patch<CompanyMeeting>(`/company/meetings/${id}`, patch),
+    USE_MOCK_API ? mockCompanyService.updateMeeting(id, patch) : updateCompanyMeeting(id, patch),
+  // "cancelled" is Reject; every other value the page passes here ("upcoming") is Approve.
   setMeetingStatus: (id: string, status: CompanyMeeting["status"]) =>
-    USE_MOCK_API ? mockCompanyService.setMeetingStatus(id, status) : apiClient.post<CompanyMeeting>(`/company/meetings/${id}/status`, { status }),
+    USE_MOCK_API
+      ? mockCompanyService.setMeetingStatus(id, status)
+      : status === "cancelled"
+        ? rejectCompanyMeeting(id)
+        : approveCompanyMeeting(id),
   deleteMeeting: (id: string) =>
     USE_MOCK_API ? mockCompanyService.deleteMeeting(id) : apiClient.delete<void>(`/company/meetings/${id}`),
 
