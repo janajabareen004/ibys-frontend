@@ -23,6 +23,7 @@ import {
   type CompanyMeetingStatus,
   type CompanyNotification,
   type CompanyActivity,
+  type CompanyActivityType,
   type CompanyEmployee,
   type CompanyComment,
   type ProjectManagerPerson,
@@ -1076,6 +1077,99 @@ async function fetchCompanyTeam(): Promise<CompanyEmployee[]> {
   return members.map((r) => mapCompanyEmployee(r, computeCompanyWorkload(r.name, tasks)));
 }
 
+// ---------------------------------------------------------------------------
+// Real backend: activity log (company-scoped)
+//
+// There is no "/company/activity" endpoint. Activity is server-generated and
+// read-only at the existing GET /activity (public.activity_events — every
+// event newest-first per activity_service.get_all()'s ORDER BY created_at
+// DESC). Ownership is derived the same way as documents/meetings/requests/team:
+// keep only rows whose project_id is in fetchOwnedProjectIds(). `actor` is
+// already a resolved display name/id stored on the row at write time (see
+// activity_service.resolve_actor()) — no extra lookup needed. Mirrors
+// managerApi.ts's fetchManagerActivity()/mapActivityEvent() exactly, including
+// its unknown-type fallback, so the same real event reads identically whether
+// viewed by the owning Manager or the owning Building Company.
+// ---------------------------------------------------------------------------
+
+type BackendActivityRow = {
+  event_id: string | number;
+  project_id: string | number | null;
+  actor: string | null;
+  type: string | null;
+  message: string | null;
+  created_at: string | null;
+};
+
+// The full real public.activity_events vocabulary, plus the original mock-only
+// values (see CompanyActivityType) — anything else falls back to "note_added"
+// so an event always has a valid icon/label without recategorizing it as
+// something it isn't.
+const COMPANY_ACTIVITY_TYPES: ReadonlySet<CompanyActivityType> = new Set([
+  "stage_updated",
+  "photo_uploaded",
+  "document_uploaded",
+  "meeting_approved",
+  "meeting_rejected",
+  "request_completed",
+  "request_received",
+  "task_created",
+  "task_updated",
+  "task_deleted",
+  "task_completed",
+  "meeting_scheduled",
+  "meeting_updated",
+  "document_added",
+  "request_replied",
+  "request_approved",
+  "request_rejected",
+  "note_added",
+]);
+
+function toCompanyActivityType(raw: string | null): CompanyActivityType {
+  const value = (raw ?? "").trim() as CompanyActivityType;
+  return COMPANY_ACTIVITY_TYPES.has(value) ? value : "note_added";
+}
+
+/** Guaranteed-valid ISO date string so formatDate()/sorting never throws — same convention as safeMeetingDate()/safeRequestDate() above. */
+function safeActivityDate(value: string | null | undefined): string {
+  if (typeof value === "string" && value) {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return value;
+  }
+  return new Date().toISOString();
+}
+
+function mapCompanyActivity(row: BackendActivityRow): CompanyActivity {
+  return {
+    id: String(row.event_id),
+    type: toCompanyActivityType(row.type),
+    actor: row.actor ?? "",
+    projectId: row.project_id != null ? String(row.project_id) : undefined,
+    message: row.message ?? "",
+    createdAt: safeActivityDate(row.created_at),
+  };
+}
+
+/** Fetches every activity event whose project is owned by this company, newest first (the backend already orders by created_at desc; filtering preserves that order). */
+async function fetchCompanyActivity(): Promise<CompanyActivity[]> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (ownedIds.length === 0) return [];
+  const ownedSet = new Set(ownedIds);
+
+  let rows: BackendActivityRow[];
+  try {
+    const res = await apiClient.get<BackendActivityRow[]>("/activity");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+
+  return rows
+    .filter((r) => r.project_id != null && ownedSet.has(String(r.project_id)))
+    .map(mapCompanyActivity);
+}
+
 export const companyApi = {
   getProjects: () =>
     USE_MOCK_API ? mockCompanyService.getProjects() : fetchCompanyProjects(),
@@ -1102,7 +1196,7 @@ export const companyApi = {
   getNotifications: () =>
     USE_MOCK_API ? mockCompanyService.getNotifications() : apiClient.get<CompanyNotification[]>("/company/notifications"),
   getActivity: () =>
-    USE_MOCK_API ? mockCompanyService.getActivity() : apiClient.get<CompanyActivity[]>("/company/activity"),
+    USE_MOCK_API ? mockCompanyService.getActivity() : fetchCompanyActivity(),
   getEmployees: () =>
     USE_MOCK_API ? mockCompanyService.getEmployees() : fetchCompanyTeam(),
   getEmployee: (id: string) =>

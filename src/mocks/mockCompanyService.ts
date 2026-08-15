@@ -138,13 +138,28 @@ export type CompanyNotification = {
 };
 
 export type CompanyActivityType =
+  // Original mock-only vocabulary — kept as-is so existing mock data/mutations
+  // below remain valid; never emitted by the real backend.
   | "stage_updated"
   | "photo_uploaded"
   | "document_uploaded"
   | "meeting_approved"
   | "meeting_rejected"
   | "request_completed"
-  | "request_received";
+  | "request_received"
+  // Real public.activity_events vocabulary (see ibys-backend/models/activity_event.py) —
+  // added so real events read from the backend are never recategorized/fabricated.
+  | "task_created"
+  | "task_updated"
+  | "task_deleted"
+  | "task_completed"
+  | "meeting_scheduled"
+  | "meeting_updated"
+  | "document_added"
+  | "request_replied"
+  | "request_approved"
+  | "request_rejected"
+  | "note_added";
 
 export type CompanyActivity = {
   id: string;
