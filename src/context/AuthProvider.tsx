@@ -342,3 +342,14 @@ export function dashboardPathForRole(role: Role): string {
       return "/company/dashboard";
   }
 }
+
+export function notificationPathForRole(role: Role): string {
+  switch (role) {
+    case "TENANT":
+      return "/tenant/notifications";
+    case "PROJECT_MANAGER":
+      return "/manager/notifications";
+    case "BUILDING_COMPANY":
+      return "/company/notifications";
+  }
+}

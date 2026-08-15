@@ -1,3 +1,5 @@
+import * as React from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Bell, Image, CalendarClock, Layers, AlertTriangle, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/i18n/I18nProvider";
+import { useAuth, notificationPathForRole } from "@/context/AuthProvider";
 
 type Sample = {
   key: string;
@@ -30,6 +33,9 @@ const TONE_CLASS: Record<Sample["tone"], string> = {
 
 export function NotificationsMenu() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = React.useState(false);
 
   const formatWhen = (m: number) => {
     if (m < 60) return t("notif.time.minutesAgo", { n: m });
@@ -37,8 +43,13 @@ export function NotificationsMenu() {
     return t("notif.time.daysAgo", { n: Math.round(m / (60 * 24)) });
   };
 
+  const viewAll = () => {
+    setOpen(false);
+    if (user) navigate({ to: notificationPathForRole(user.role) });
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -53,7 +64,7 @@ export function NotificationsMenu() {
       <DropdownMenuContent align="end" className="w-80 p-0">
         <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
           <span className="text-sm font-semibold text-foreground">{t("notif.title")}</span>
-          <button className="text-xs font-medium text-primary hover:underline">
+          <button type="button" onClick={viewAll} className="text-xs font-medium text-primary hover:underline">
             {t("notif.viewAll")}
           </button>
         </div>
