@@ -16,6 +16,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   project?: CompanyProject | null;
   managers: ProjectManagerPerson[];
+  /** Called after a successful create/update/delete so the caller can refetch its real project list. */
+  onSaved?: () => void;
 };
 
 const STATUSES: CompanyProjectStatus[] = ["planning", "in_progress", "on_hold", "delayed", "completed"];
@@ -28,26 +30,27 @@ function toDateInput(iso?: string) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function ProjectDialog({ open, onOpenChange, project, managers }: Props) {
+export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }: Props) {
   const { t } = useI18n();
   const isEdit = !!project;
 
   const [name, setName] = React.useState("");
   const [address, setAddress] = React.useState("");
   const [clientName, setClientName] = React.useState("");
-  const [projectManager, setProjectManager] = React.useState("");
+  const [projectManagerId, setProjectManagerId] = React.useState("");
   const [status, setStatus] = React.useState<CompanyProjectStatus>("planning");
   const [progress, setProgress] = React.useState(0);
   const [currentStage, setCurrentStage] = React.useState<ProjectStageKey>("structural");
   const [expectedCompletion, setExpectedCompletion] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setName(project?.name ?? "");
     setAddress(project?.address ?? "");
     setClientName(project?.clientName ?? "");
-    setProjectManager(project?.projectManager ?? managers[0]?.name ?? "");
+    setProjectManagerId(project?.projectManagerId ?? managers[0]?.id ?? "");
     setStatus(project?.status ?? "planning");
     setProgress(project?.progress ?? 0);
     setCurrentStage(project?.currentStage ?? "structural");
@@ -55,16 +58,20 @@ export function ProjectDialog({ open, onOpenChange, project, managers }: Props) 
     setDescription(project?.description ?? "");
   }, [open, project, managers]);
 
-  const submit = () => {
-    if (!name.trim() || !address.trim() || !clientName.trim()) {
+  const submit = async () => {
+    if (saving) return;
+    if (!name.trim() || !address.trim()) {
       toast.error(t("common.error"));
       return;
     }
+    const selectedManagerId = projectManagerId || managers[0]?.id || "";
+    const selectedManagerName = managers.find((m) => m.id === selectedManagerId)?.name ?? "";
     const payload = {
       name: name.trim(),
       address: address.trim(),
       clientName: clientName.trim(),
-      projectManager: projectManager || managers[0]?.name || "",
+      projectManager: selectedManagerName,
+      projectManagerId: selectedManagerId,
       status,
       progress,
       currentStage,
@@ -72,22 +79,38 @@ export function ProjectDialog({ open, onOpenChange, project, managers }: Props) 
       description: description.trim(),
       team: project?.team ?? [],
     };
-    if (isEdit && project) {
-      companyMutations.updateProject(project.id, payload);
-      toast.success(t("company.pm.toasts.projectUpdated"));
-    } else {
-      companyMutations.createProject(payload);
-      toast.success(t("company.pm.toasts.projectCreated"));
+    setSaving(true);
+    try {
+      if (isEdit && project) {
+        await companyMutations.updateProject(project.id, payload);
+        toast.success(t("company.pm.toasts.projectUpdated"));
+      } else {
+        await companyMutations.createProject(payload);
+        toast.success(t("company.pm.toasts.projectCreated"));
+      }
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
     }
-    onOpenChange(false);
   };
 
-  const remove = () => {
+  const remove = async () => {
     if (!project) return;
     if (!window.confirm(t("company.pm.confirmDeleteProject"))) return;
-    companyMutations.deleteProject(project.id);
-    toast.success(t("company.pm.toasts.projectDeleted"));
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await companyMutations.deleteProject(project.id);
+      toast.success(t("company.pm.toasts.projectDeleted"));
+      onSaved?.();
+      onOpenChange(false);
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -96,6 +119,7 @@ export function ProjectDialog({ open, onOpenChange, project, managers }: Props) 
         <DialogHeader>
           <DialogTitle>{isEdit ? t("company.pm.projectForm.editTitle") : t("company.pm.projectForm.createTitle")}</DialogTitle>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground">{t("company.pm.projectForm.unsavedFieldsNote")}</p>
         <div className="grid gap-3">
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.name")}</Label><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={200} /></div>
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.address")}</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} /></div>
@@ -103,10 +127,10 @@ export function ProjectDialog({ open, onOpenChange, project, managers }: Props) 
             <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.client")}</Label><Input value={clientName} onChange={(e) => setClientName(e.target.value)} /></div>
             <div className="grid gap-1.5">
               <Label>{t("company.pm.projectForm.manager")}</Label>
-              <Select value={projectManager} onValueChange={setProjectManager}>
+              <Select value={projectManagerId} onValueChange={setProjectManagerId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {managers.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}
+                  {managers.map((m) => <SelectItem key={m.id} value={m.id}>{m.name || m.id}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -130,10 +154,10 @@ export function ProjectDialog({ open, onOpenChange, project, managers }: Props) 
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.description")}</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={1000} /></div>
         </div>
         <DialogFooter className="gap-2 sm:justify-between">
-          {isEdit ? <Button variant="destructive" onClick={remove}>{t("company.pm.common.delete")}</Button> : <span />}
+          {isEdit ? <Button variant="destructive" onClick={remove} disabled={saving}>{t("company.pm.common.delete")}</Button> : <span />}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>{t("company.pm.common.cancel")}</Button>
-            <Button onClick={submit}>{t("company.pm.common.save")}</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("company.pm.common.cancel")}</Button>
+            <Button onClick={submit} disabled={saving}>{t("company.pm.common.save")}</Button>
           </div>
         </DialogFooter>
       </DialogContent>

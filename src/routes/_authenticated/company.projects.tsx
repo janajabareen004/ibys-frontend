@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RoleGuard } from "@/components/common/RoleGuard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
-import { useCompanyProjects, useCompanyProjectManagers } from "@/hooks/useCompanyData";
+import { useCompanyProjects, useCompanyAssignableProjectManagers } from "@/hooks/useCompanyData";
 import { CompanyProjectCard } from "@/components/company/CompanyProjectCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,8 @@ export const Route = createFileRoute("/_authenticated/company/projects")({
 
 function Page() {
   const { t } = useI18n();
-  const { data, loading } = useCompanyProjects();
-  const managers = useCompanyProjectManagers();
+  const { data, loading, refetch } = useCompanyProjects();
+  const managers = useCompanyAssignableProjectManagers();
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<CompanyProjectStatus | "all">("all");
   const [sort, setSort] = React.useState<"updated" | "name" | "progress" | "completion">("updated");
@@ -95,7 +95,13 @@ function Page() {
         </div>
       )}
 
-      <ProjectDialog open={dialogOpen} onOpenChange={setDialogOpen} project={null} managers={managers.data ?? []} />
+      <ProjectDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        project={null}
+        managers={managers.data ?? []}
+        onSaved={refetch}
+      />
     </RoleGuard>
   );
 }

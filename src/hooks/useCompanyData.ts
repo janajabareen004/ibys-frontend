@@ -44,6 +44,7 @@ export const useCompanyEmployees = () => useAsync(() => companyApi.getEmployees(
 export const useCompanyEmployee = (id: string) => useAsync(() => companyApi.getEmployee(id), [id]);
 export const useCompanyComments = () => useAsync(() => companyApi.getComments());
 export const useCompanyProjectManagers = () => useAsync(() => companyApi.getProjectManagers());
+export const useCompanyAssignableProjectManagers = () => useAsync(() => companyApi.getAssignableProjectManagers());
 export const useCompanyTenants = () => useAsync(() => companyApi.getTenants());
 export const useCompanyTenant = (id: string) => useAsync(() => companyApi.getTenant(id), [id]);
 export const useCompanyApartments = () => useAsync(() => companyApi.getApartments());

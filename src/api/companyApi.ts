@@ -344,6 +344,97 @@ async function fetchCompanyProjectManagers(): Promise<ProjectManagerPerson[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: assignable project managers (for the Create Project picker)
+//
+// fetchCompanyProjectManagers() above is scoped to managers already assigned
+// to one of this company's OWN projects — correct for the "Project Managers"
+// roster page, but useless the very first time a company creates a project
+// (it owns none yet, so that list is always empty). The Create Project picker
+// instead needs every registered manager, via the new GET /api/managers
+// (list) endpoint, so a real project_manager_id can be selected and sent.
+// ---------------------------------------------------------------------------
+
+type BackendManagerDirectoryRow = {
+  user_id: string;
+  manager_name: string | null;
+  phone: string | null;
+};
+
+function mapManagerDirectoryRow(row: BackendManagerDirectoryRow): ProjectManagerPerson {
+  const name = (row.manager_name ?? "").trim();
+  return {
+    id: String(row.user_id),
+    name,
+    email: "",
+    phone: (row.phone ?? "").trim(),
+    avatarSeed: slugifyManagerName(name, String(row.user_id)),
+    // Not meaningful for a system-wide directory listing — never fabricated.
+    activeProjects: 0,
+  };
+}
+
+async function fetchAssignableProjectManagers(): Promise<ProjectManagerPerson[]> {
+  let rows: BackendManagerDirectoryRow[];
+  try {
+    const res = await apiClient.get<BackendManagerDirectoryRow[]>("/managers");
+    rows = Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+  return rows.map(mapManagerDirectoryRow);
+}
+
+// ---------------------------------------------------------------------------
+// Real backend: create project (Building Company)
+//
+// POSTs to the existing POST /api/projects (now BUILDING_COMPANY-authorized
+// server-side in routes/projects.py, which also derives building_company_id
+// from the authenticated user there — never trusted from this body). Only
+// the real `projects` columns are sent: project_name, location, status,
+// project_manager_id, description. clientName/currentStage/expectedCompletion/
+// progress have no column on `projects` (see mapCompanyProject above) and are
+// intentionally NEVER sent — ProjectDialog also tells the user this rather
+// than silently dropping them.
+// ---------------------------------------------------------------------------
+
+function toBackendProjectStatus(status: CompanyProjectStatus): string {
+  switch (status) {
+    case "planning":
+      return "Planning";
+    case "on_hold":
+      return "On Hold";
+    case "delayed":
+      return "Delayed";
+    case "completed":
+      return "Completed";
+    default:
+      return "In Progress";
+  }
+}
+
+type CreateCompanyProjectInput = Parameters<typeof mockCompanyService.createProject>[0];
+
+async function createCompanyProject(input: CreateCompanyProjectInput): Promise<CompanyProject> {
+  const name = input.name.trim();
+  const location = input.address.trim();
+  if (!name || !location) {
+    throw new Error("Project name and address are required.");
+  }
+  const body = {
+    project_name: name,
+    location,
+    status: toBackendProjectStatus(input.status),
+    project_manager_id: input.projectManagerId || null,
+    description: (input.description ?? "").trim(),
+  };
+  const row = await apiClient.post<BackendProjectRow>("/projects", body);
+  // The newly created row has no progress rows yet; map it with an empty
+  // list (same convention fetchCompanyProjects uses for any project without
+  // progress data) rather than fabricating stage/progress/date values.
+  return mapCompanyProject(row, [], input.projectManager || "");
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: apartments (company-scoped)
 //
 // There is no "/company/apartments" endpoint. Apartments live at the existing
@@ -1436,6 +1527,12 @@ export const companyApi = {
   // ---- project managers
   getProjectManagers: () =>
     USE_MOCK_API ? mockCompanyService.getProjectManagers() : fetchCompanyProjectManagers(),
+  // Every registered manager (for the Create Project picker) — see
+  // fetchAssignableProjectManagers() above for why this differs from
+  // getProjectManagers(). Mock mode reuses the same fixed pool since it
+  // already represents every available manager, not just assigned ones.
+  getAssignableProjectManagers: () =>
+    USE_MOCK_API ? mockCompanyService.getProjectManagers() : fetchAssignableProjectManagers(),
 
   // ---- tenants
   getTenants: () =>
@@ -1460,7 +1557,7 @@ export const companyApi = {
 export const companyMutations = {
   // projects
   createProject: (input: Parameters<typeof mockCompanyService.createProject>[0]) =>
-    USE_MOCK_API ? mockCompanyService.createProject(input) : apiClient.post<CompanyProject>("/company/projects", input),
+    USE_MOCK_API ? mockCompanyService.createProject(input) : createCompanyProject(input),
   updateProject: (id: string, patch: Partial<CompanyProject>) =>
     USE_MOCK_API ? mockCompanyService.updateProject(id, patch) : apiClient.patch<CompanyProject>(`/company/projects/${id}`, patch),
   deleteProject: (id: string) =>

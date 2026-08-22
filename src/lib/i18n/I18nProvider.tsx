@@ -84,8 +84,14 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   );
 
   const formatDate = React.useCallback<Ctx["formatDate"]>(
-    (d, opts) =>
-      new Intl.DateTimeFormat(lang, opts ?? { dateStyle: "medium" }).format(new Date(d)),
+    (d, opts) => {
+      const date = new Date(d);
+      // A project/stage with no real date yet (e.g. a brand-new project with
+      // no progress rows) legitimately has "" here — never fake today's date,
+      // just render a neutral placeholder instead of letting Intl throw.
+      if (Number.isNaN(date.getTime())) return "—";
+      return new Intl.DateTimeFormat(lang, opts ?? { dateStyle: "medium" }).format(date);
+    },
     [lang],
   );
 
@@ -111,8 +117,11 @@ const FALLBACK_CTX: Ctx = {
     const v = resolve(en, path);
     return typeof v === "string" ? interpolate(v, vars) : path;
   },
-  formatDate: (d, opts) =>
-    new Intl.DateTimeFormat("en", opts ?? { dateStyle: "medium" }).format(new Date(d)),
+  formatDate: (d, opts) => {
+    const date = new Date(d);
+    if (Number.isNaN(date.getTime())) return "—";
+    return new Intl.DateTimeFormat("en", opts ?? { dateStyle: "medium" }).format(date);
+  },
   formatNumber: (n, opts) => new Intl.NumberFormat("en", opts).format(n),
 };
 
