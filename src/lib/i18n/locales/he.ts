@@ -1071,7 +1071,6 @@ const he: Dictionary = {
         expectedCompletion: "סיום צפוי",
         progress: "התקדמות",
         description: "תיאור",
-        unsavedFieldsNote: "שם הלקוח, השלב הנוכחי, הסיום הצפוי וההתקדמות עדיין לא נשמרים בפרויקט ולא יישמרו.",
       },
       managers: {
         title: "מנהלי פרויקטים",

@@ -1078,8 +1078,6 @@ const en = {
         expectedCompletion: "Expected completion",
         progress: "Progress",
         description: "Description",
-        unsavedFieldsNote:
-          "Client name, current stage, expected completion, and progress aren't stored on the project yet and won't be saved.",
       },
       managers: {
         title: "Project managers",

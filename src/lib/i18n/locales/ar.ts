@@ -1071,7 +1071,6 @@ const ar: Dictionary = {
         expectedCompletion: "الإنجاز المتوقع",
         progress: "التقدّم",
         description: "الوصف",
-        unsavedFieldsNote: "اسم العميل والمرحلة الحالية والإنجاز المتوقع والتقدّم لا يتم حفظها في المشروع بعد ولن تُحفظ.",
       },
       managers: {
         title: "مدراء المشاريع",

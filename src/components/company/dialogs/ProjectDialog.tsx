@@ -119,12 +119,13 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
         <DialogHeader>
           <DialogTitle>{isEdit ? t("company.pm.projectForm.editTitle") : t("company.pm.projectForm.createTitle")}</DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">{t("company.pm.projectForm.unsavedFieldsNote")}</p>
         <div className="grid gap-3">
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.name")}</Label><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={200} /></div>
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.address")}</Label><Input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} /></div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.client")}</Label><Input value={clientName} onChange={(e) => setClientName(e.target.value)} /></div>
+            {isEdit && (
+              <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.client")}</Label><Input value={clientName} onChange={(e) => setClientName(e.target.value)} /></div>
+            )}
             <div className="grid gap-1.5">
               <Label>{t("company.pm.projectForm.manager")}</Label>
               <Select value={projectManagerId} onValueChange={setProjectManagerId}>
@@ -141,15 +142,21 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
                 <SelectContent>{STATUSES.map((s) => <SelectItem key={s} value={s}>{t(`company.projectStatus.${s}`)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <div className="grid gap-1.5">
-              <Label>{t("company.pm.projectForm.currentStage")}</Label>
-              <Select value={currentStage} onValueChange={(v) => setCurrentStage(v as ProjectStageKey)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{STAGES.map((s) => <SelectItem key={s} value={s}>{t(`tenant.timeline.stages.${s}`)}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.expectedCompletion")}</Label><Input type="date" value={expectedCompletion} onChange={(e) => setExpectedCompletion(e.target.value)} /></div>
-            <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.progress")} — {progress}%</Label><Input type="range" min={0} max={100} step={5} value={progress} onChange={(e) => setProgress(Number(e.target.value))} /></div>
+            {isEdit && (
+              <div className="grid gap-1.5">
+                <Label>{t("company.pm.projectForm.currentStage")}</Label>
+                <Select value={currentStage} onValueChange={(v) => setCurrentStage(v as ProjectStageKey)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{STAGES.map((s) => <SelectItem key={s} value={s}>{t(`tenant.timeline.stages.${s}`)}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            )}
+            {isEdit && (
+              <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.expectedCompletion")}</Label><Input type="date" value={expectedCompletion} onChange={(e) => setExpectedCompletion(e.target.value)} /></div>
+            )}
+            {isEdit && (
+              <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.progress")} — {progress}%</Label><Input type="range" min={0} max={100} step={5} value={progress} onChange={(e) => setProgress(Number(e.target.value))} /></div>
+            )}
           </div>
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.description")}</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={1000} /></div>
         </div>
