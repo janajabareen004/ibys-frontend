@@ -268,7 +268,13 @@ function Page() {
         </SectionCard>
       </div>
 
-      <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project.data} managers={managers.data ?? []} />
+      <ProjectDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        project={project.data}
+        managers={managers.data ?? []}
+        onSaved={project.refetch}
+      />
       <ApartmentDialog
         open={aptDialogOpen}
         onOpenChange={setAptDialogOpen}

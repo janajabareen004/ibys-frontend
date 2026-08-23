@@ -435,6 +435,42 @@ async function createCompanyProject(input: CreateCompanyProjectInput): Promise<C
 }
 
 // ---------------------------------------------------------------------------
+// Real backend: update project (Building Company)
+//
+// PUTs to the existing PUT /api/projects/<id> — now ownership-checked
+// server-side in routes/projects.py (a BUILDING_COMPANY caller may only
+// update a project it owns; its building_company_id is stripped from the
+// body there so it can never reassign the project). Ownership is also
+// checked client-side via fetchOwnedProjectIds() first (defense-in-depth,
+// same convention as updateCompanyStage/updateCompanyRequestStatus below).
+// Only the real `projects` columns are sent — the same set createCompanyProject()
+// sends — so clientName/currentStage/expectedCompletion/progress (no column
+// on `projects`) are never persisted here either, matching the Create flow.
+// ---------------------------------------------------------------------------
+
+async function updateCompanyProject(id: string, patch: Partial<CompanyProject>): Promise<CompanyProject> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (!ownedIds.includes(String(id))) {
+    throw new Error("This project is not owned by your company.");
+  }
+  const body: Record<string, unknown> = {};
+  if (patch.name !== undefined) body.project_name = patch.name.trim();
+  if (patch.address !== undefined) body.location = patch.address.trim();
+  if (patch.status !== undefined) body.status = toBackendProjectStatus(patch.status);
+  if (patch.projectManagerId !== undefined) body.project_manager_id = patch.projectManagerId || null;
+  if (patch.description !== undefined) body.description = patch.description.trim();
+  await apiClient.put<BackendProjectRow>(`/projects/${id}`, body);
+  // Re-read through the same real, ownership-filtered path the detail/list
+  // pages use, so the returned shape (progress/currentStage/manager name)
+  // is exactly what a fresh page load would show — never fabricated here.
+  const refreshed = await fetchCompanyProject(id);
+  if (!refreshed) {
+    throw new Error("Project not found after update.");
+  }
+  return refreshed;
+}
+
+// ---------------------------------------------------------------------------
 // Real backend: apartments (company-scoped)
 //
 // There is no "/company/apartments" endpoint. Apartments live at the existing
@@ -1559,7 +1595,7 @@ export const companyMutations = {
   createProject: (input: Parameters<typeof mockCompanyService.createProject>[0]) =>
     USE_MOCK_API ? mockCompanyService.createProject(input) : createCompanyProject(input),
   updateProject: (id: string, patch: Partial<CompanyProject>) =>
-    USE_MOCK_API ? mockCompanyService.updateProject(id, patch) : apiClient.patch<CompanyProject>(`/company/projects/${id}`, patch),
+    USE_MOCK_API ? mockCompanyService.updateProject(id, patch) : updateCompanyProject(id, patch),
   deleteProject: (id: string) =>
     USE_MOCK_API ? mockCompanyService.deleteProject(id) : apiClient.delete<void>(`/company/projects/${id}`),
   assignProjectManager: (projectId: string, managerId: string) =>
