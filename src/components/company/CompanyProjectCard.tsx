@@ -6,7 +6,7 @@ import { CompanyProjectStatusBadge } from "./CompanyProjectStatusBadge";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { translateCompanyProject } from "@/lib/i18n/projectI18n";
 import type { CompanyProject } from "@/mocks/mockCompanyService";
-import { MapPin, User, Calendar, Image as ImageIcon, FileText, ArrowRight } from "lucide-react";
+import { MapPin, User, Calendar, Image as ImageIcon, FileText } from "lucide-react";
 
 export function CompanyProjectCard({ project: raw, layout = "grid" }: { project: CompanyProject; layout?: "grid" | "list" }) {
   const { t, formatDate } = useI18n();
@@ -16,7 +16,7 @@ export function CompanyProjectCard({ project: raw, layout = "grid" }: { project:
 
   return (
     <Card className="group relative overflow-hidden transition-all hover:shadow-md">
-      <CardContent className={layout === "list" ? "grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" : "flex flex-col gap-4 p-5"}>
+      <CardContent className="flex flex-col gap-4 p-5">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
@@ -55,9 +55,6 @@ export function CompanyProjectCard({ project: raw, layout = "grid" }: { project:
             </span>
           </div>
         </div>
-        <Link to="/company/projects/$projectId" params={{ projectId: project.id }} className="inline-flex items-center gap-1 self-start text-xs font-semibold text-primary hover:underline sm:self-center">
-          {t("company.projects.open")} <ArrowRight className="h-3 w-3 rtl:rotate-180" aria-hidden />
-        </Link>
       </CardContent>
     </Card>
   );
