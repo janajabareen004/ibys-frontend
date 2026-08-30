@@ -1070,6 +1070,7 @@ const ar: Dictionary = {
         currentStage: "المرحلة الحالية",
         expectedCompletion: "الإنجاز المتوقع",
         progress: "التقدّم",
+        progressNote: "يُحسب تقدّم المشروع تلقائيًا من مراحل البناء.",
         description: "الوصف",
       },
       managers: {

@@ -39,7 +39,6 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
   const [clientName, setClientName] = React.useState("");
   const [projectManagerId, setProjectManagerId] = React.useState("");
   const [status, setStatus] = React.useState<CompanyProjectStatus>("planning");
-  const [progress, setProgress] = React.useState(0);
   const [currentStage, setCurrentStage] = React.useState<ProjectStageKey>("structural");
   const [expectedCompletion, setExpectedCompletion] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -52,7 +51,6 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
     setClientName(project?.clientName ?? "");
     setProjectManagerId(project?.projectManagerId ?? managers[0]?.id ?? "");
     setStatus(project?.status ?? "planning");
-    setProgress(project?.progress ?? 0);
     setCurrentStage(project?.currentStage ?? "structural");
     setExpectedCompletion(toDateInput(project?.expectedCompletion) || toDateInput(new Date(Date.now() + 180 * 86400000).toISOString()));
     setDescription(project?.description ?? "");
@@ -73,7 +71,6 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
       projectManager: selectedManagerName,
       projectManagerId: selectedManagerId,
       status,
-      progress,
       currentStage,
       expectedCompletion: expectedCompletion ? new Date(expectedCompletion).toISOString() : new Date().toISOString(),
       description: description.trim(),
@@ -85,7 +82,10 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
         await companyMutations.updateProject(project.id, payload);
         toast.success(t("company.pm.toasts.projectUpdated"));
       } else {
-        await companyMutations.createProject(payload);
+        // Project progress has no editable input here (it's always derived
+        // server-side from real construction-stage rows) — a brand-new
+        // project simply starts at 0% until stages exist, same as before.
+        await companyMutations.createProject({ ...payload, progress: 0 });
         toast.success(t("company.pm.toasts.projectCreated"));
       }
       onSaved?.();
@@ -154,10 +154,10 @@ export function ProjectDialog({ open, onOpenChange, project, managers, onSaved }
             {isEdit && (
               <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.expectedCompletion")}</Label><Input type="date" value={expectedCompletion} onChange={(e) => setExpectedCompletion(e.target.value)} /></div>
             )}
-            {isEdit && (
-              <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.progress")} — {progress}%</Label><Input type="range" min={0} max={100} step={5} value={progress} onChange={(e) => setProgress(Number(e.target.value))} /></div>
-            )}
           </div>
+          {isEdit && (
+            <p className="text-xs text-muted-foreground">{t("company.pm.projectForm.progressNote")}</p>
+          )}
           <div className="grid gap-1.5"><Label>{t("company.pm.projectForm.description")}</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={1000} /></div>
         </div>
         <DialogFooter className="gap-2 sm:justify-between">

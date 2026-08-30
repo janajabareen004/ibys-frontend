@@ -1077,6 +1077,7 @@ const en = {
         currentStage: "Current stage",
         expectedCompletion: "Expected completion",
         progress: "Progress",
+        progressNote: "Project progress is calculated automatically from construction stages.",
         description: "Description",
       },
       managers: {

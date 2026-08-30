@@ -1070,6 +1070,7 @@ const he: Dictionary = {
         currentStage: "שלב נוכחי",
         expectedCompletion: "סיום צפוי",
         progress: "התקדמות",
+        progressNote: "התקדמות הפרויקט מחושבת אוטומטית משלבי הבנייה.",
         description: "תיאור",
       },
       managers: {

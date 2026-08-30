@@ -1,10 +1,10 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { RoleGuard } from "@/components/common/RoleGuard";
-import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useCompanyProjects, useCompanyAssignableProjectManagers } from "@/hooks/useCompanyData";
 import { CompanyProjectCard } from "@/components/company/CompanyProjectCard";
+import { CompanyPageHero } from "@/components/company/CompanyPageHero";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +12,8 @@ import { Search, LayoutGrid, List as ListIcon, Plus } from "lucide-react";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ProjectDialog } from "@/components/company/dialogs/ProjectDialog";
-import type { CompanyProjectStatus } from "@/mocks/mockCompanyService";
+import type { CompanyProject, CompanyProjectStatus } from "@/mocks/mockCompanyService";
+import constructionBg from "@/assets/hero-company.jpg";
 
 export const Route = createFileRoute("/_authenticated/company/projects")({
   head: () => ({
@@ -33,6 +34,7 @@ function Page() {
   const [sort, setSort] = React.useState<"updated" | "name" | "progress" | "completion">("updated");
   const [layout, setLayout] = React.useState<"grid" | "list">("grid");
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingProject, setEditingProject] = React.useState<CompanyProject | null>(null);
 
   const filtered = React.useMemo(() => {
     const list = (data ?? []).filter((p) => {
@@ -52,11 +54,13 @@ function Page() {
 
   return (
     <RoleGuard allow="BUILDING_COMPANY">
-      <PageHeader
+      <CompanyPageHero
         title={t("company.projects.title")}
-        description={t("company.projects.description")}
-        actions={<Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4" />{t("company.pm.projects.new")}</Button>}
+        subtitle={t("company.projects.description")}
+        image={constructionBg}
+        action={<Button onClick={() => setDialogOpen(true)}><Plus className="h-4 w-4" />{t("company.pm.projects.new")}</Button>}
       />
+
       <div className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" aria-hidden />
@@ -87,18 +91,26 @@ function Page() {
 
       {loading ? <InlineLoader /> : filtered.length === 0 ? <EmptyState title={t("company.projects.empty")} /> : layout === "grid" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((p) => <CompanyProjectCard key={p.id} project={p} />)}
+          {filtered.map((p) => <CompanyProjectCard key={p.id} project={p} onEdit={() => setEditingProject(p)} />)}
         </div>
       ) : (
         <div className="grid gap-3">
-          {filtered.map((p) => <CompanyProjectCard key={p.id} project={p} layout="list" />)}
+          {filtered.map((p) => <CompanyProjectCard key={p.id} project={p} layout="list" onEdit={() => setEditingProject(p)} />)}
         </div>
       )}
 
+      {/* Single dialog instance handles both create (project=null, opened via "New project") and
+          edit (project=editingProject, opened via a card's pencil button) — ProjectDialog already
+          supports both modes via its `isEdit = !!project` check. */}
       <ProjectDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        project={null}
+        open={dialogOpen || editingProject !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialogOpen(false);
+            setEditingProject(null);
+          }
+        }}
+        project={editingProject}
         managers={managers.data ?? []}
         onSaved={refetch}
       />
