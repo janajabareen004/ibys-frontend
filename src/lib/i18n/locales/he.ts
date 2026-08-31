@@ -829,6 +829,18 @@ const he: Dictionary = {
         status: "סטטוס",
         progress: "אחוז התקדמות",
       },
+      stageNames: {
+        sitePreparation: "הכנת השטח",
+        foundation: "יסודות",
+        structureConstruction: "בניית שלד",
+        windowsDoors: "חלונות ודלתות",
+        electricalInstallation: "התקנת חשמל",
+        plumbing: "אינסטלציה",
+        interiorFinishing: "גימור פנים",
+        exteriorFinishing: "גימור חוץ",
+        finalInspection: "בדיקה סופית",
+      },
+      noStagesLeft: "כל השלבים כבר נוספו לפרויקט זה.",
       save: "הוסף שלב",
       toastCreated: "השלב נוסף",
       errors: {

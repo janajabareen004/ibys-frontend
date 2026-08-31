@@ -836,6 +836,18 @@ const en = {
         status: "Status",
         progress: "Progress percentage",
       },
+      stageNames: {
+        sitePreparation: "Site Preparation",
+        foundation: "Foundation",
+        structureConstruction: "Structure Construction",
+        windowsDoors: "Windows & Doors",
+        electricalInstallation: "Electrical Installation",
+        plumbing: "Plumbing",
+        interiorFinishing: "Interior Finishing",
+        exteriorFinishing: "Exterior Finishing",
+        finalInspection: "Final Inspection",
+      },
+      noStagesLeft: "All stages have already been added for this project.",
       save: "Add stage",
       toastCreated: "Stage added",
       errors: {

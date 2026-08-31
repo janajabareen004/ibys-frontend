@@ -32,6 +32,10 @@ function Page() {
 
   const projectName = (id: string) => projects?.find((p) => p.id === id)?.name;
   const filtered = (stages ?? []).filter((s) => projectId === "all" ? true : s.projectId === projectId);
+  const existingStageNames = (stages ?? [])
+    .filter((s) => s.projectId === projectId)
+    .map((s) => s.taskName)
+    .filter((n): n is string => Boolean(n));
 
   // A stage always belongs to one real project (POST /projects/<id>/progress),
   // so creation is only possible once a specific project is selected — never
@@ -80,6 +84,7 @@ function Page() {
         open={addOpen}
         onOpenChange={setAddOpen}
         projectId={canAddStage ? projectId : null}
+        existingStageNames={existingStageNames}
         onSaved={refetch}
       />
     </RoleGuard>

@@ -15,11 +15,34 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** The real project this stage will be created under (POST /projects/<id>/progress). */
   projectId: string | null;
+  /**
+   * Raw task_name of every real stage already created for this project
+   * (CompanyStage.taskName — see mapCompanyStage()). Used only to hide
+   * already-used options below; never sent to the backend as-is.
+   */
+  existingStageNames?: string[];
   /** Called after a successful create so the caller can refetch its real stage list. */
   onSaved?: () => void;
 };
 
 const STATUSES: CompanyStageStatus[] = ["pending", "current", "completed", "delayed"];
+
+/**
+ * Fixed, backend-agnostic vocabulary for `task_name`. Values are the exact
+ * strings POSTed as task_name — kept English-like and stable regardless of
+ * UI locale (only the displayed label is translated via labelKey).
+ */
+const STAGE_NAME_OPTIONS: { value: string; labelKey: string }[] = [
+  { value: "Site Preparation", labelKey: "sitePreparation" },
+  { value: "Foundation", labelKey: "foundation" },
+  { value: "Structure Construction", labelKey: "structureConstruction" },
+  { value: "Windows & Doors", labelKey: "windowsDoors" },
+  { value: "Electrical Installation", labelKey: "electricalInstallation" },
+  { value: "Plumbing", labelKey: "plumbing" },
+  { value: "Interior Finishing", labelKey: "interiorFinishing" },
+  { value: "Exterior Finishing", labelKey: "exteriorFinishing" },
+  { value: "Final Inspection", labelKey: "finalInspection" },
+];
 
 function todayInput() {
   const d = new Date();
@@ -27,7 +50,7 @@ function todayInput() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function AddStageDialog({ open, onOpenChange, projectId, onSaved }: Props) {
+export function AddStageDialog({ open, onOpenChange, projectId, existingStageNames, onSaved }: Props) {
   const { t } = useI18n();
 
   const [taskName, setTaskName] = React.useState("");
@@ -37,13 +60,25 @@ export function AddStageDialog({ open, onOpenChange, projectId, onSaved }: Props
   const [progress, setProgress] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
 
+  const usedNames = React.useMemo(
+    () => new Set((existingStageNames ?? []).map((n) => n.trim().toLowerCase())),
+    [existingStageNames],
+  );
+  const availableOptions = React.useMemo(
+    () => STAGE_NAME_OPTIONS.filter((o) => !usedNames.has(o.value.toLowerCase())),
+    [usedNames],
+  );
+
   React.useEffect(() => {
     if (!open) return;
-    setTaskName("");
+    setTaskName(availableOptions[0]?.value ?? "");
     setStartDate(todayInput());
     setEndDate(todayInput());
     setStatus("pending");
     setProgress(0);
+    // Intentionally only re-runs when the dialog opens: availableOptions is
+    // derived from props captured at open-time, not meant to reset mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const submit = async () => {
@@ -88,7 +123,20 @@ export function AddStageDialog({ open, onOpenChange, projectId, onSaved }: Props
         <div className="grid gap-4">
           <div className="grid gap-1.5">
             <Label htmlFor="add-stage-name">{t("company.addStage.fields.name")}</Label>
-            <Input id="add-stage-name" value={taskName} onChange={(e) => setTaskName(e.target.value)} maxLength={200} />
+            {availableOptions.length > 0 ? (
+              <Select value={taskName} onValueChange={setTaskName}>
+                <SelectTrigger id="add-stage-name"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {availableOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {t(`company.addStage.stageNames.${o.labelKey}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("company.addStage.noStagesLeft")}</p>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
@@ -119,7 +167,7 @@ export function AddStageDialog({ open, onOpenChange, projectId, onSaved }: Props
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{t("company.updateStage.cancel")}</Button>
-          <Button onClick={submit} disabled={saving || !projectId}>{t("company.addStage.save")}</Button>
+          <Button onClick={submit} disabled={saving || !projectId || availableOptions.length === 0}>{t("company.addStage.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -973,6 +973,7 @@ function mapCompanyStage(row: BackendProgressRow, key: ProjectStageKey): Company
     id: String(row.progress_id ?? ""),
     projectId: row.project_id != null ? String(row.project_id) : "",
     key,
+    taskName: row.task_name ?? undefined,
     status,
     progress: stagePercent(row),
     // No responsible_team/updated_at/notes columns on public.progress — never fabricated.

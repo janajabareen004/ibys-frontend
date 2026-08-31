@@ -48,6 +48,10 @@ export type CompanyStage = {
   id: string;
   projectId: string;
   key: ProjectStageKey;
+  /** Raw progress.task_name for this real row (undefined in mock mode). Used
+   * client-side to avoid offering duplicate stage names when creating a new
+   * stage — never sent back to the backend as-is. */
+  taskName?: string;
   status: CompanyStageStatus;
   progress: number;
   responsibleTeam: string;
@@ -440,6 +444,24 @@ export const mockCompanyService = {
   getActivity: () => delay([...ACTIVITY]),
   getEmployees: () => delay([...EMPLOYEES]),
   getEmployee: (id: string) => delay(EMPLOYEES.find((e) => e.id === id) ?? null),
+  addEmployee(input: { projectId: string; name: string; role?: string; email?: string; phone?: string; availability?: CompanyEmployee["availability"] }) {
+    const employee: CompanyEmployee = {
+      id: uid("emp-"),
+      name: input.name,
+      role: input.role || "",
+      email: input.email || "",
+      phone: input.phone || "",
+      availability: input.availability ?? "available",
+      // A brand-new member has no tasks yet — never fabricated.
+      workload: 0,
+      projectIds: [input.projectId],
+      currentStage: undefined,
+      lastActive: nowIso(),
+    };
+    EMPLOYEES.unshift(employee);
+    emit();
+    return employee;
+  },
   getComments: () => delay([...COMMENTS]),
   addDocument(input: { projectId: string; name: string; category: DocumentCategory; fileUrl?: string }) {
     const doc: DocumentAsset = {

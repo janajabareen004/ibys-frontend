@@ -829,6 +829,18 @@ const ar: Dictionary = {
         status: "الحالة",
         progress: "نسبة التقدم",
       },
+      stageNames: {
+        sitePreparation: "تجهيز الموقع",
+        foundation: "الأساسات",
+        structureConstruction: "بناء الهيكل",
+        windowsDoors: "النوافذ والأبواب",
+        electricalInstallation: "التركيبات الكهربائية",
+        plumbing: "السباكة",
+        interiorFinishing: "التشطيبات الداخلية",
+        exteriorFinishing: "التشطيبات الخارجية",
+        finalInspection: "الفحص النهائي",
+      },
+      noStagesLeft: "تمت إضافة جميع المراحل لهذا المشروع بالفعل.",
       save: "إضافة مرحلة",
       toastCreated: "تمت إضافة المرحلة",
       errors: {
