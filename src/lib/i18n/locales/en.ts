@@ -808,6 +808,8 @@ const en = {
       filterProject: "Filter project",
       allProjects: "All projects",
       empty: "No stages to show.",
+      add: "Add stage",
+      selectProjectToAdd: "Select a project above to add a stage.",
     },
     updateStage: {
       title: "Update stage",
@@ -824,6 +826,21 @@ const en = {
       publish: "Publish update",
       cancel: "Cancel",
       apiHint: "Progress and expected completion are saved to this project's real record.",
+    },
+    addStage: {
+      title: "Add construction stage",
+      fields: {
+        name: "Stage name",
+        startDate: "Start date",
+        endDate: "Expected completion",
+        status: "Status",
+        progress: "Progress percentage",
+      },
+      save: "Add stage",
+      toastCreated: "Stage added",
+      errors: {
+        endBeforeStart: "Expected completion cannot be earlier than the start date.",
+      },
     },
     photos: {
       title: "Photo management",

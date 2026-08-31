@@ -31,7 +31,16 @@ function safeFormatStageDate(
   return Number.isNaN(d.getTime()) ? "—" : formatDate(d, opts);
 }
 
-export function StageManagementCard({ stage, projectName }: { stage: CompanyStage; projectName?: string }) {
+export function StageManagementCard({
+  stage,
+  projectName,
+  onSaved,
+}: {
+  stage: CompanyStage;
+  projectName?: string;
+  /** Called after a successful update so the caller can refetch its real stage list. */
+  onSaved?: () => void;
+}) {
   const { t, formatDate } = useI18n();
   const [open, setOpen] = React.useState(false);
   const [progress, setProgress] = React.useState(stage.progress);
@@ -53,6 +62,7 @@ export function StageManagementCard({ stage, projectName }: { stage: CompanyStag
         estimatedCompletion: expected ? new Date(expected).toISOString() : stage.estimatedCompletion,
       });
       notifySuccess(t("company.updateStage.publish") as string);
+      onSaved?.();
       setOpen(false);
     } catch {
       notifyError(t("common.error") as string);

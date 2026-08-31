@@ -1060,6 +1060,65 @@ async function updateCompanyStage(id: string, patch: Partial<CompanyStage>): Pro
   return (await fetchCompanyStage(id)) ?? existing;
 }
 
+/**
+ * Maps the UI's 4-bucket stage status to a real, recognizable backend
+ * `progress.status` string — same convention as toBackendProjectStatus()
+ * above. Chosen so normalizeStageStatus()/stagePercent() (used to read this
+ * row back) classify it into the same bucket it was created with.
+ */
+function toBackendStageStatus(status: CompanyStageStatus): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "delayed":
+      return "Delayed";
+    case "current":
+      return "In Progress";
+    default:
+      return "Pending";
+  }
+}
+
+type CreateCompanyStageInput = {
+  taskName: string;
+  startDate: string;
+  endDate: string;
+  status: CompanyStageStatus;
+  progress: number;
+};
+
+/**
+ * Creates a new construction-stage row for a project that may currently have
+ * none (e.g. a project card stuck at 0% because public.progress has zero
+ * rows for it — see averageProgress() above, never changed here).
+ *
+ * POSTs to the existing POST /api/projects/<project_id>/progress — already
+ * ownership-checked server-side (a BUILDING_COMPANY caller may only add a
+ * stage to a project it owns; routes/progress.py resolves project_id only
+ * from the URL, never trusted from the body). Ownership is also checked
+ * client-side via fetchOwnedProjectIds() first, same defense-in-depth
+ * convention as updateCompanyStage()/updateCompanyProject() above.
+ */
+async function createCompanyStage(projectId: string, input: CreateCompanyStageInput): Promise<CompanyStage> {
+  const ownedIds = await fetchOwnedProjectIds();
+  if (!ownedIds.includes(String(projectId))) {
+    throw new Error("This project is not owned by your company.");
+  }
+  const body = {
+    task_name: input.taskName.trim(),
+    start_date: input.startDate,
+    end_date: input.endDate,
+    status: toBackendStageStatus(input.status),
+    progress_percent: input.progress,
+  };
+  const created = await apiClient.post<BackendProgressRow>(`/projects/${projectId}/progress`, body);
+  // Re-read through the same real, ownership-filtered path the Stages page
+  // uses, so the returned stage's key/order match exactly what a fresh page
+  // load would show — never fabricated here.
+  const stages = await fetchCompanyStagesForProject(projectId);
+  return stages.find((s) => s.id === String(created.progress_id)) ?? stages[stages.length - 1];
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: tenant requests listing (company-scoped)
 //
@@ -1642,6 +1701,11 @@ export const companyMutations = {
   // stages
   updateStage: (id: string, patch: Partial<CompanyStage>) =>
     USE_MOCK_API ? mockCompanyService.updateStage(id, patch) : updateCompanyStage(id, patch),
+  // No mock-mode equivalent exists (mockCompanyService seeds a fixed stage
+  // list and has no "create" path) — this always calls the real endpoint,
+  // matching how this app actually runs (VITE_USE_MOCK_API=false).
+  createStage: (projectId: string, input: Parameters<typeof createCompanyStage>[1]) =>
+    createCompanyStage(projectId, input),
   addStageComment: (input: Parameters<typeof mockCompanyService.addStageComment>[0]) =>
     USE_MOCK_API ? mockCompanyService.addStageComment(input) : apiClient.post<CompanyComment>(`/company/stages/comments`, input),
 

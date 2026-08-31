@@ -801,6 +801,8 @@ const he: Dictionary = {
       filterProject: "סנן פרויקט",
       allProjects: "כל הפרויקטים",
       empty: "אין שלבים להצגה.",
+      add: "הוסף שלב",
+      selectProjectToAdd: "בחר פרויקט למעלה כדי להוסיף שלב.",
     },
     updateStage: {
       title: "עדכון שלב",
@@ -817,6 +819,21 @@ const he: Dictionary = {
       publish: "פרסם עדכון",
       cancel: "ביטול",
       apiHint: "אחוז ההתקדמות ותאריך המסירה הצפוי נשמרים ברשומה האמיתית של הפרויקט.",
+    },
+    addStage: {
+      title: "הוספת שלב בנייה",
+      fields: {
+        name: "שם השלב",
+        startDate: "תאריך התחלה",
+        endDate: "מסירה צפויה",
+        status: "סטטוס",
+        progress: "אחוז התקדמות",
+      },
+      save: "הוסף שלב",
+      toastCreated: "השלב נוסף",
+      errors: {
+        endBeforeStart: "תאריך המסירה הצפוי לא יכול להיות מוקדם מתאריך ההתחלה.",
+      },
     },
     photos: {
       title: "ניהול תמונות",

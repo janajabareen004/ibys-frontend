@@ -801,6 +801,8 @@ const ar: Dictionary = {
       filterProject: "تصفية المشروع",
       allProjects: "جميع المشاريع",
       empty: "لا توجد مراحل للعرض.",
+      add: "إضافة مرحلة",
+      selectProjectToAdd: "اختر مشروعًا أعلاه لإضافة مرحلة.",
     },
     updateStage: {
       title: "تحديث المرحلة",
@@ -817,6 +819,21 @@ const ar: Dictionary = {
       publish: "نشر التحديث",
       cancel: "إلغاء",
       apiHint: "يتم حفظ نسبة التقدم وتاريخ التسليم المتوقع في السجل الحقيقي لهذا المشروع.",
+    },
+    addStage: {
+      title: "إضافة مرحلة بناء",
+      fields: {
+        name: "اسم المرحلة",
+        startDate: "تاريخ البدء",
+        endDate: "الإنجاز المتوقع",
+        status: "الحالة",
+        progress: "نسبة التقدم",
+      },
+      save: "إضافة مرحلة",
+      toastCreated: "تمت إضافة المرحلة",
+      errors: {
+        endBeforeStart: "لا يمكن أن يكون تاريخ الإنجاز المتوقع أقدم من تاريخ البدء.",
+      },
     },
     photos: {
       title: "إدارة الصور",
