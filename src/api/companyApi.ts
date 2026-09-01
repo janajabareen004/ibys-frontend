@@ -3,7 +3,7 @@
  * Uses the mock service when VITE_USE_MOCK_API is true; otherwise proxies to REST endpoints.
  */
 import { USE_MOCK_API, AUTH_STORAGE_KEY } from "./config";
-import { apiClient } from "./apiClient";
+import { apiClient, ApiError } from "./apiClient";
 import { orderProgressRowsForStages } from "@/lib/stageOrdering";
 import {
   mockCompanyService,
@@ -108,6 +108,28 @@ function getStoredUserId(): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Extracts a human-readable message from an apiClient failure. apiClient's
+ * generic message extraction (see apiClient.ts) only recognizes a
+ * `{ message }` body, but every ibys-backend ServiceError response is
+ * `{ error }` (see routes/*.py), so without this every real API failure
+ * would surface as the generic "Request failed with status ###" instead of
+ * e.g. "Missing required field(s): email, password, full_name." Used by
+ * TenantDialog to show the real backend validation/ownership error.
+ */
+export function extractApiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    const data = err.data;
+    if (data && typeof data === "object" && "error" in data) {
+      const msg = (data as { error?: unknown }).error;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+    return err.message || fallback;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 function normalizeCompanyProjectStatus(value: string | null | undefined): CompanyProjectStatus {
@@ -554,6 +576,113 @@ async function fetchCompanyApartmentsForProject(projectId: string): Promise<Apar
   }
 }
 
+/**
+ * Links (or unlinks, when tenantId is null) a tenant on an apartment via the
+ * existing, ownership-checked PUT /api/apartments/<id> (routes/apartments.py
+ * — a BUILDING_COMPANY may only update an apartment in a project it owns, a
+ * MANAGER only one in a project it manages; enforced server-side via
+ * project_write_access_error on the apartment's real project_id, checked
+ * against the apartment_id since the id alone can't be trusted). There is
+ * no dedicated "/assign" backend route — replaces the old, nonexistent
+ * "POST /company/apartments/:id/assign" call.
+ */
+async function assignCompanyApartmentTenant(apartmentId: string, tenantId: string | null): Promise<Apartment> {
+  const row = await apiClient.put<BackendApartmentRow>(`/apartments/${apartmentId}`, { tenant_id: tenantId });
+  return mapCompanyApartment(row);
+}
+
+/**
+ * Builds the real backend apartment body from UI fields. Only columns that
+ * actually exist on public.apartments (models/apartment.py: apartment_number,
+ * floor, size, status, tenant_id) are ever sent — `building`, `entrance`,
+ * `rooms`, and `notes` are mock-only fields with no backend column, so
+ * sending them would make Supabase reject the insert/update with an
+ * unknown-column error. This mirrors mapCompanyApartment() below, which
+ * already always returns "" / 0 / undefined for these same fields when
+ * reading real data. `apartment_id` and `project_id` are never included
+ * here either: the backend treats both as protected (Apartment.strip_protected
+ * in models/apartment.py) and derives project_id only from the URL.
+ */
+function toBackendApartmentBody(
+  input: Partial<Pick<Apartment, "number" | "floor" | "sizeSqm" | "status" | "tenantId">>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (input.number !== undefined) body.apartment_number = input.number;
+  if (input.floor !== undefined) {
+    // The real `floor` column is numeric (confirmed against live data: 1, 3,
+    // etc.), but ApartmentDialog's free-text field falls back to the "—"
+    // placeholder when left blank. Sending "—" (or any other non-numeric
+    // text) would make Supabase reject the whole insert/update, so a
+    // blank/non-numeric floor is simply omitted rather than forwarded as-is.
+    const trimmed = input.floor.trim();
+    const floorNum = Number(trimmed);
+    if (trimmed !== "" && Number.isFinite(floorNum)) body.floor = floorNum;
+  }
+  if (input.sizeSqm !== undefined) body.size = input.sizeSqm;
+  if (input.status !== undefined) body.status = input.status;
+  // "tenantId" may be explicitly present-but-undefined (ApartmentDialog's
+  // "unassigned" option) — that must still send tenant_id: null, not be
+  // skipped, so unassigning via the dialog actually clears it.
+  if ("tenantId" in input) body.tenant_id = input.tenantId ?? null;
+  return body;
+}
+
+/**
+ * Fields ApartmentDialog actually collects and persists — deliberately
+ * narrower than the mock's `Apartment` shape, which also carries
+ * `building`/`entrance`/`rooms`/`notes` for the in-memory demo only (those
+ * have no column on public.apartments; see toBackendApartmentBody above).
+ */
+export type ApartmentFormInput = {
+  projectId: string;
+  number: string;
+  floor: string;
+  sizeSqm: number;
+  status?: ApartmentStatus;
+  tenantId?: string;
+};
+
+/**
+ * Creates an apartment via the real, ownership-checked
+ * POST /api/projects/<project_id>/apartments (routes/apartments.py —
+ * @require_roles("MANAGER", "BUILDING_COMPANY") + project_write_access_error,
+ * so a caller can only create an apartment in a project it owns/manages).
+ * project_id comes only from the URL, matching the backend contract — it is
+ * never duplicated into the body. Replaces the old, nonexistent
+ * "POST /company/apartments" call.
+ */
+async function createCompanyApartment(input: ApartmentFormInput): Promise<Apartment> {
+  if (!input.projectId) {
+    throw new Error("A project must be selected to create an apartment.");
+  }
+  const body = toBackendApartmentBody(input);
+  const row = await apiClient.post<BackendApartmentRow>(`/projects/${input.projectId}/apartments`, body);
+  return mapCompanyApartment(row);
+}
+
+/**
+ * Updates an apartment via the real, ownership-checked
+ * PUT /api/apartments/<apartment_id> (same route/guard as
+ * assignCompanyApartmentTenant above). Replaces the old, nonexistent
+ * "PATCH /company/apartments/:id" call.
+ */
+async function updateCompanyApartment(id: string, patch: Partial<Apartment>): Promise<Apartment> {
+  const body = toBackendApartmentBody(patch);
+  const row = await apiClient.put<BackendApartmentRow>(`/apartments/${id}`, body);
+  return mapCompanyApartment(row);
+}
+
+/**
+ * Deletes an apartment via the real, ownership-checked
+ * DELETE /api/apartments/<apartment_id> (routes/apartments.py — confirmed
+ * to exist: @require_roles("MANAGER", "BUILDING_COMPANY") +
+ * project_write_access_error on the apartment's real project_id). Replaces
+ * the old, nonexistent "DELETE /company/apartments/:id" call.
+ */
+async function deleteCompanyApartment(id: string): Promise<void> {
+  await apiClient.delete<void>(`/apartments/${id}`);
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: tenants listing (company-scoped)
 //
@@ -623,6 +752,60 @@ async function fetchCompanyTenants(): Promise<CompanyTenant[]> {
         createdAt: (profile.created_at ?? "").trim(),
       };
     });
+}
+
+/**
+ * Creates a TENANT account through the protected, staff-initiated
+ * POST /api/tenants (routes/tenants.py — @require_auth +
+ * @require_roles("MANAGER", "BUILDING_COMPANY")). The backend always forces
+ * role="TENANT" regardless of anything sent here, so this can never create a
+ * MANAGER/BUILDING_COMPANY account. Replaces the old, nonexistent
+ * "POST /company/tenants" call. Linking the new tenant to a project/unit is
+ * a separate step — see assignCompanyApartmentTenant() above — since
+ * tenants have no project_id column.
+ *
+ * No password is collected here: the backend creates the tenant via
+ * Supabase Auth's native invite flow (auth.admin.invite_user_by_email), and
+ * Supabase emails the tenant a link to the app's /set-password page where
+ * they choose their own password before ever logging in.
+ */
+export type CreateCompanyTenantInput = {
+  fullName: string;
+  email: string;
+  phone?: string;
+};
+
+type BackendTenantCreateResponse = {
+  user_id?: string | number;
+  role?: string;
+  full_name?: string | null;
+  phone?: string | null;
+};
+
+async function createCompanyTenant(input: CreateCompanyTenantInput): Promise<CompanyTenant> {
+  const body: Record<string, unknown> = {
+    email: input.email.trim(),
+    full_name: input.fullName.trim(),
+  };
+  if (input.phone) body.phone = input.phone.trim();
+
+  const created = await apiClient.post<BackendTenantCreateResponse>("/tenants", body);
+  if (!created.user_id) {
+    throw new Error("Tenant was created but no user_id was returned.");
+  }
+  return {
+    id: String(created.user_id),
+    name: (created.full_name ?? input.fullName).trim(),
+    email: input.email.trim(),
+    phone: (created.phone ?? input.phone ?? "").trim(),
+    // No nationalId/notes column on public.tenants — never fabricated.
+    nationalId: undefined,
+    notes: undefined,
+    // Not part of this endpoint's response (public.tenants has no
+    // created_at column); the next real fetchCompanyTenants() resolves it
+    // from Supabase Auth, same as every other tenant row.
+    createdAt: "",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1672,24 +1855,40 @@ export const companyMutations = {
     USE_MOCK_API ? mockCompanyService.deleteProjectManager(id) : apiClient.delete<void>(`/company/project-managers/${id}`),
 
   // tenants
-  createTenant: (input: Parameters<typeof mockCompanyService.createTenant>[0]) =>
-    USE_MOCK_API ? mockCompanyService.createTenant(input) : apiClient.post<CompanyTenant>("/company/tenants", input),
-  updateTenant: (id: string, patch: Partial<CompanyTenant>) =>
-    USE_MOCK_API ? mockCompanyService.updateTenant(id, patch) : apiClient.patch<CompanyTenant>(`/company/tenants/${id}`, patch),
-  deleteTenant: (id: string) =>
-    USE_MOCK_API ? mockCompanyService.deleteTenant(id) : apiClient.delete<void>(`/company/tenants/${id}`),
+  // No mock-mode equivalent exists for this input shape (no password,
+  // nationalId/notes) — this always calls the real endpoint, matching how
+  // this app actually runs (VITE_USE_MOCK_API=false). See createCompanyTenant().
+  // Edit/delete are intentionally not exposed: the Tenants UI is create-only
+  // (see TenantDialog.tsx) and there is no backend route for either.
+  createTenant: (input: CreateCompanyTenantInput) => createCompanyTenant(input),
 
   // apartments
-  createApartment: (input: Parameters<typeof mockCompanyService.createApartment>[0]) =>
-    USE_MOCK_API ? mockCompanyService.createApartment(input) : apiClient.post<Apartment>("/company/apartments", input),
+  // ApartmentDialog only collects the fields public.apartments actually has
+  // (see ApartmentFormInput above); the mock's fuller Apartment shape still
+  // needs building/entrance/rooms, so those are filled in with harmless
+  // placeholders here rather than resurrecting the removed UI fields.
+  createApartment: (input: ApartmentFormInput) =>
+    USE_MOCK_API
+      ? mockCompanyService.createApartment({
+          projectId: input.projectId,
+          building: "",
+          entrance: "",
+          floor: input.floor,
+          number: input.number,
+          rooms: 0,
+          sizeSqm: input.sizeSqm,
+          status: input.status,
+          tenantId: input.tenantId,
+        })
+      : createCompanyApartment(input),
   updateApartment: (id: string, patch: Partial<Apartment>) =>
-    USE_MOCK_API ? mockCompanyService.updateApartment(id, patch) : apiClient.patch<Apartment>(`/company/apartments/${id}`, patch),
+    USE_MOCK_API ? mockCompanyService.updateApartment(id, patch) : updateCompanyApartment(id, patch),
   deleteApartment: (id: string) =>
-    USE_MOCK_API ? mockCompanyService.deleteApartment(id) : apiClient.delete<void>(`/company/apartments/${id}`),
+    USE_MOCK_API ? mockCompanyService.deleteApartment(id) : deleteCompanyApartment(id),
   assignTenantToApartment: (apartmentId: string, tenantId: string | null) =>
     USE_MOCK_API
       ? mockCompanyService.assignTenantToApartment(apartmentId, tenantId)
-      : apiClient.post<Apartment>(`/company/apartments/${apartmentId}/assign`, { tenantId }),
+      : assignCompanyApartmentTenant(apartmentId, tenantId),
 
   // documents
   createDocument: (input: Parameters<typeof mockCompanyService.addDocument>[0]) =>

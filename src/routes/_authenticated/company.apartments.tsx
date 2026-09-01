@@ -5,7 +5,7 @@ import { RoleGuard } from "@/components/common/RoleGuard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useCompanyApartments, useCompanyProjects, useCompanyTenants } from "@/hooks/useCompanyData";
-import { companyMutations } from "@/api/companyApi";
+import { companyMutations, extractApiErrorMessage } from "@/api/companyApi";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,7 +39,14 @@ function Page() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editApt, setEditApt] = React.useState<Apartment | null>(null);
 
-  const projectMap = React.useMemo(() => new Map((projects.data ?? []).map((p) => [p.id, p])), [projects.data]);
+  // Keyed by String(project.id) — apartment.projectId is always a string
+  // (mapCompanyApartment does String(row.project_id)), but this normalizes
+  // both sides explicitly so a real, non-empty projectId can never fail to
+  // resolve a project name here due to a type mismatch.
+  const projectMap = React.useMemo(
+    () => new Map((projects.data ?? []).map((p) => [String(p.id), p])),
+    [projects.data],
+  );
   const tenantMap = React.useMemo(() => new Map((tenants.data ?? []).map((tn) => [tn.id, tn])), [tenants.data]);
 
   const list = React.useMemo(() => (apartments.data ?? []).filter((a) => {
@@ -57,9 +64,14 @@ function Page() {
   const openCreate = () => { setEditApt(null); setDialogOpen(true); };
   const openEdit = (a: Apartment) => { setEditApt(a); setDialogOpen(true); };
 
-  const assign = (apartmentId: string, tenantId: string) => {
-    companyMutations.assignTenantToApartment(apartmentId, tenantId === "none" ? null : tenantId);
-    toast.success(t("company.pm.toasts.apartmentAssigned"));
+  const assign = async (apartmentId: string, tenantId: string) => {
+    try {
+      await companyMutations.assignTenantToApartment(apartmentId, tenantId === "none" ? null : tenantId);
+      toast.success(t("company.pm.toasts.apartmentAssigned"));
+      apartments.refetch();
+    } catch (err) {
+      toast.error(extractApiErrorMessage(err, t("common.error") as string));
+    }
   };
 
   return (
@@ -112,13 +124,13 @@ function Page() {
             <TableBody>
               {list.map((a) => (
                 <TableRow key={a.id}>
-                  <TableCell className="text-muted-foreground">{projectMap.get(a.projectId)?.name ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{projectMap.get(String(a.projectId))?.name ?? "—"}</TableCell>
                   <TableCell className="font-medium">{t("company.pm.apartments.locationFormat", { building: a.building, entrance: a.entrance, floor: a.floor, number: a.number })}</TableCell>
                   <TableCell>{a.rooms}</TableCell>
                   <TableCell>{a.sizeSqm} m²</TableCell>
                   <TableCell><Badge variant={a.status === "assigned" || a.status === "sold" ? "default" : "secondary"}>{t(`company.pm.apartmentStatus.${a.status}`)}</Badge></TableCell>
                   <TableCell>
-                    <Select value={a.tenantId ?? "none"} onValueChange={(v) => assign(a.id, v)}>
+                    <Select value={a.tenantId ?? "none"} onValueChange={(v) => void assign(a.id, v)}>
                       <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">{t("company.pm.apartmentForm.unassigned")}</SelectItem>
@@ -142,6 +154,7 @@ function Page() {
         apartment={editApt}
         projects={projects.data ?? []}
         tenants={tenants.data ?? []}
+        onSaved={() => apartments.refetch()}
       />
     </RoleGuard>
   );
