@@ -840,6 +840,7 @@ function mapManagedStage(row: BackendProgressRow, key: ProjectStageKey): Managed
     id: String(row.progress_id),
     projectId: row.project_id != null ? String(row.project_id) : "",
     key,
+    taskName: row.task_name ?? undefined,
     status,
     // Prefer the real persisted percentage; fall back to the status-derived
     // value only for legacy rows where progress_percent is null.
@@ -936,6 +937,61 @@ async function updateManagerStage(progressId: string, patch: StagePatch): Promis
   // Nothing persistable was provided — avoid an empty-body 400 from the backend.
   if (Object.keys(body).length === 0) return;
   await apiClient.put(`/progress/${progressId}`, body);
+}
+
+/**
+ * Maps the UI's 4-bucket stage status to a real, recognizable backend
+ * `progress.status` string — mirrors companyApi.ts's toBackendStageStatus()
+ * so a MANAGER- and a BUILDING_COMPANY-created stage are classified into the
+ * same bucket by normalizeStageStatus() when read back.
+ */
+function toBackendStageStatus(status: ManagedStage["status"]): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "delayed":
+      return "Delayed";
+    case "current":
+      return "In Progress";
+    default:
+      return "Pending";
+  }
+}
+
+export type CreateManagerStageInput = {
+  taskName: string;
+  startDate: string;
+  endDate: string;
+  status: ManagedStage["status"];
+  progress: number;
+};
+
+/**
+ * Creates a new construction-stage row for a project the manager is
+ * assigned to. Uses the real POST /api/projects/<id>/progress endpoint —
+ * the backend already scopes this to the manager's own projects via
+ * project_write_access_error() (project.project_manager_id must match), and
+ * ownership is also checked here client-side via getOwnedProjectIds(), the
+ * same defense-in-depth convention as fetchManagerStages()/updateManagerStage().
+ */
+async function createManagerStage(projectId: string, input: CreateManagerStageInput): Promise<ManagedStage> {
+  const owned = await getOwnedProjectIds();
+  if (!owned.has(String(projectId))) {
+    throw new Error("This project is not assigned to you.");
+  }
+  const body = {
+    task_name: input.taskName.trim(),
+    start_date: input.startDate,
+    end_date: input.endDate,
+    status: toBackendStageStatus(input.status),
+    progress_percent: input.progress,
+  };
+  const created = await apiClient.post<BackendProgressRow>(`/projects/${projectId}/progress`, body);
+  // Re-read through the same real, ownership-filtered path the Stages page
+  // uses, so the returned stage's key/order match exactly what a fresh page
+  // load would show — never fabricated here.
+  const stages = await fetchManagerStagesForProject(projectId);
+  return stages.find((s) => s.id === String(created.progress_id)) ?? stages[stages.length - 1];
 }
 
 // ---------------------------------------------------------------------------
@@ -1422,6 +1478,11 @@ export const managerMutations = {
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.updateStage(id, patch))
       : updateManagerStage(id, patch),
+  // No mock-mode equivalent exists (mockManagerService seeds a fixed stage
+  // list and has no "create" path) — this always calls the real endpoint,
+  // matching how this app actually runs (VITE_USE_MOCK_API=false).
+  createStage: (projectId: string, input: CreateManagerStageInput) =>
+    createManagerStage(projectId, input),
   createMeeting: (input: MeetingWriteInput) =>
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.createMeeting(input))

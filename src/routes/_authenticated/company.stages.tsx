@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RoleGuard } from "@/components/common/RoleGuard";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useCompanyStages, useCompanyProjects } from "@/hooks/useCompanyData";
+import { companyMutations } from "@/api/companyApi";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -85,6 +86,7 @@ function Page() {
         onOpenChange={setAddOpen}
         projectId={canAddStage ? projectId : null}
         existingStageNames={existingStageNames}
+        onCreate={companyMutations.createStage}
         onSaved={refetch}
       />
     </RoleGuard>

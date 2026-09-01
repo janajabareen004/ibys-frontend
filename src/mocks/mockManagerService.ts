@@ -69,6 +69,10 @@ export type ManagedStage = {
   id: string;
   projectId: string;
   key: ProjectStageKey;
+  /** Raw progress.task_name for this real row (undefined in mock mode). Used
+   * client-side to avoid offering duplicate stage names when creating a new
+   * stage — never sent back to the backend as-is. */
+  taskName?: string;
   status: "completed" | "current" | "pending" | "delayed";
   progress: number;
   responsibleCompany: string;

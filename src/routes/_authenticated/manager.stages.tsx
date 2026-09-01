@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RoleGuard } from "@/components/common/RoleGuard";
 import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
-import { useManagerAllStages, useManagerProjects } from "@/hooks/useManagerData";
+import { useManagerAllStages, useManagerProjects, managerActions } from "@/hooks/useManagerData";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +11,11 @@ import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/tenant/StatusBadge";
 import { SectionCard } from "@/components/manager/SectionCard";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
+import { EmptyState } from "@/components/feedback/EmptyState";
 import { StageUpdateDialog } from "@/components/manager/dialogs/StageUpdateDialog";
 import { PhotoUploadDialog } from "@/components/manager/dialogs/PhotoUploadDialog";
-import { AlertTriangle, Camera, FileText, MessageSquare, UploadCloud } from "lucide-react";
+import { AddStageDialog } from "@/components/company/dialogs/AddStageDialog";
+import { AlertTriangle, Camera, FileText, MessageSquare, Plus, UploadCloud } from "lucide-react";
 import type { ManagedStage, ProjectStageKey } from "@/mocks/mockManagerService";
 
 export const Route = createFileRoute("/_authenticated/manager/stages")({
@@ -33,9 +35,30 @@ function Page() {
   const [projectId, setProjectId] = React.useState<string>("all");
   const [editing, setEditing] = React.useState<ManagedStage | null>(null);
   const [uploadFor, setUploadFor] = React.useState<{ projectId: string; stage: ProjectStageKey } | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
 
   const projectName = (id: string) => projects.data?.find((p) => p.id === id)?.name ?? "";
   const filtered = (stages.data ?? []).filter((s) => (projectId === "all" ? true : s.projectId === projectId));
+  const existingStageNames = (stages.data ?? [])
+    .filter((s) => s.projectId === projectId)
+    .map((s) => s.taskName)
+    .filter((n): n is string => Boolean(n));
+
+  // A stage always belongs to one real project (POST /projects/<id>/progress),
+  // so creation is only possible once a specific project is selected — never
+  // for the "All projects" filter. Mirrors company.stages.tsx's canAddStage.
+  const canAddStage = projectId !== "all";
+  const addStageButton = (
+    <Button
+      size="sm"
+      onClick={() => setAddOpen(true)}
+      disabled={!canAddStage}
+      title={canAddStage ? undefined : t("company.stages.selectProjectToAdd")}
+    >
+      <Plus className="h-4 w-4" />
+      {t("company.stages.add")}
+    </Button>
+  );
 
   return (
     <RoleGuard allow="PROJECT_MANAGER">
@@ -43,17 +66,22 @@ function Page() {
         title={t("manager.stages.title")}
         description={t("manager.stages.description")}
         actions={
-          <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger className="w-56"><SelectValue placeholder={t("manager.stages.filterProject")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("manager.stages.allProjects")}</SelectItem>
-              {(projects.data ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger className="w-56"><SelectValue placeholder={t("manager.stages.filterProject")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("manager.stages.allProjects")}</SelectItem>
+                {(projects.data ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {addStageButton}
+          </div>
         }
       />
 
-      {stages.loading ? <InlineLoader /> : (
+      {stages.loading ? <InlineLoader /> : filtered.length === 0 ? (
+        <EmptyState title={t("company.stages.empty")} action={addStageButton} />
+      ) : (
         <div className="space-y-4">
           {filtered.map((s) => (
             <SectionCard
@@ -96,6 +124,14 @@ function Page() {
         projects={projects.data ?? []}
         defaultProjectId={uploadFor?.projectId}
         defaultStage={uploadFor?.stage}
+      />
+      <AddStageDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        projectId={canAddStage ? projectId : null}
+        existingStageNames={existingStageNames}
+        onCreate={managerActions.createStage}
+        onSaved={stages.refetch}
       />
     </RoleGuard>
   );

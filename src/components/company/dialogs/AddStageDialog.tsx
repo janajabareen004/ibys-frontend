@@ -6,9 +6,23 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useI18n } from "@/lib/i18n/I18nProvider";
-import { companyMutations } from "@/api/companyApi";
 import { notifySuccess, notifyError } from "@/components/feedback/SuccessNotification";
-import type { CompanyStageStatus } from "@/mocks/mockCompanyService";
+
+/**
+ * Role-agnostic status vocabulary for the dialog. Structurally identical to
+ * CompanyStageStatus (mockCompanyService) and ManagedStage["status"]
+ * (mockManagerService) — kept local so this dialog has no dependency on
+ * either role's API/mock module, only on whichever onCreate is injected.
+ */
+export type AddStageStatus = "pending" | "current" | "completed" | "delayed";
+
+export type AddStageInput = {
+  taskName: string;
+  startDate: string;
+  endDate: string;
+  status: AddStageStatus;
+  progress: number;
+};
 
 type Props = {
   open: boolean;
@@ -17,15 +31,21 @@ type Props = {
   projectId: string | null;
   /**
    * Raw task_name of every real stage already created for this project
-   * (CompanyStage.taskName — see mapCompanyStage()). Used only to hide
+   * (CompanyStage.taskName / ManagedStage.taskName). Used only to hide
    * already-used options below; never sent to the backend as-is.
    */
   existingStageNames?: string[];
+  /**
+   * Injected so this one dialog works for both Building Company
+   * (companyMutations.createStage) and Project Manager (managerActions.createStage)
+   * without duplicating the UI — each caller's real, role-scoped backend call.
+   */
+  onCreate: (projectId: string, input: AddStageInput) => Promise<unknown>;
   /** Called after a successful create so the caller can refetch its real stage list. */
   onSaved?: () => void;
 };
 
-const STATUSES: CompanyStageStatus[] = ["pending", "current", "completed", "delayed"];
+const STATUSES: AddStageStatus[] = ["pending", "current", "completed", "delayed"];
 
 /**
  * Fixed, backend-agnostic vocabulary for `task_name`. Values are the exact
@@ -50,13 +70,13 @@ function todayInput() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function AddStageDialog({ open, onOpenChange, projectId, existingStageNames, onSaved }: Props) {
+export function AddStageDialog({ open, onOpenChange, projectId, existingStageNames, onCreate, onSaved }: Props) {
   const { t } = useI18n();
 
   const [taskName, setTaskName] = React.useState("");
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
-  const [status, setStatus] = React.useState<CompanyStageStatus>("pending");
+  const [status, setStatus] = React.useState<AddStageStatus>("pending");
   const [progress, setProgress] = React.useState(0);
   const [saving, setSaving] = React.useState(false);
 
@@ -97,7 +117,7 @@ export function AddStageDialog({ open, onOpenChange, projectId, existingStageNam
     }
     setSaving(true);
     try {
-      await companyMutations.createStage(projectId, {
+      await onCreate(projectId, {
         taskName: taskName.trim(),
         startDate,
         endDate,
@@ -150,7 +170,7 @@ export function AddStageDialog({ open, onOpenChange, projectId, existingStageNam
           </div>
           <div className="grid gap-1.5">
             <Label>{t("company.addStage.fields.status")}</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as CompanyStageStatus)}>
+            <Select value={status} onValueChange={(v) => setStatus(v as AddStageStatus)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {STATUSES.map((s) => <SelectItem key={s} value={s}>{t(`company.stageStatus.${s}`)}</SelectItem>)}
