@@ -606,6 +606,10 @@ const ar: Dictionary = {
       lastActive: "آخر نشاط",
       availabilityStates: { available: "متاح", busy: "مشغول", off: "خارج الدوام" },
       empty: "لا يوجد أعضاء يطابقون الفلاتر.",
+      editStatus: "تعديل الحالة",
+      changeStatus: "تغيير الحالة",
+      statusUpdated: "تم تحديث الحالة.",
+      statusUpdateFailed: "فشل تحديث الحالة. حاول مرة أخرى.",
     },
     activity: {
       title: "سجل النشاط",
@@ -1022,6 +1026,12 @@ const ar: Dictionary = {
       email: "البريد الإلكتروني",
       phone: "الهاتف",
       project: "المشروع",
+      editStatus: "تعديل الحالة",
+      changeStatus: "تغيير الحالة",
+      statusAvailable: "متاح",
+      statusBusy: "مشغول",
+      statusUpdated: "تم تحديث الحالة.",
+      statusUpdateFailed: "فشل تحديث الحالة. حاول مرة أخرى.",
     },
     activity: {
       title: "سجل النشاط",

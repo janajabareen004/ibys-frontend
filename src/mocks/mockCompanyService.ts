@@ -462,6 +462,13 @@ export const mockCompanyService = {
     emit();
     return employee;
   },
+  updateEmployeeAvailability(id: string, availability: CompanyEmployee["availability"]) {
+    const e = EMPLOYEES.find((e) => e.id === id);
+    if (!e) return null;
+    e.availability = availability;
+    emit();
+    return e;
+  },
   getComments: () => delay([...COMMENTS]),
   addDocument(input: { projectId: string; name: string; category: DocumentCategory; fileUrl?: string }) {
     const doc: DocumentAsset = {

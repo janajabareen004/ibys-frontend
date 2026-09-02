@@ -1265,6 +1265,20 @@ async function createManagerTeamMember(input: TeamMemberWriteInput): Promise<Emp
   return mapEmployee(row, 0);
 }
 
+/**
+ * Updates a team member's availability via the existing PATCH /api/team/<id>
+ * route (routes/team.py — no new endpoint needed). Ownership/authorization
+ * is enforced server-side there (require_roles("MANAGER","BUILDING_COMPANY")
+ * + project_write_access_error against the member's real project_id); this
+ * call does not duplicate that check client-side.
+ */
+async function updateManagerEmployeeAvailability(
+  id: string,
+  availability: Employee["availability"],
+): Promise<void> {
+  await apiClient.patch(`/team/${id}`, { availability });
+}
+
 async function fetchManagerEmployee(id: string): Promise<Employee | null> {
   let row: BackendTeamMemberRow | null;
   try {
@@ -1474,6 +1488,10 @@ export const managerMutations = {
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.addEmployee(input))
       : createManagerTeamMember(input),
+  updateEmployeeAvailability: (id: string, availability: Employee["availability"]) =>
+    USE_MOCK_API
+      ? Promise.resolve(mockManagerService.updateEmployeeAvailability(id, availability))
+      : updateManagerEmployeeAvailability(id, availability),
   updateStage: (id: string, patch: StagePatch) =>
     USE_MOCK_API
       ? Promise.resolve(mockManagerService.updateStage(id, patch))

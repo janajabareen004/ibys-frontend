@@ -529,6 +529,13 @@ export const mockManagerService = {
     emit();
     return employee;
   },
+  updateEmployeeAvailability(id: string, availability: Employee["availability"]) {
+    const e = EMPLOYEES.find((e) => e.id === id);
+    if (!e) return null;
+    e.availability = availability;
+    emit();
+    return e;
+  },
 
   // ---- stage mutations
   updateStage(id: string, patch: Partial<Pick<ManagedStage, "progress" | "status" | "notes" | "estimatedCompletion" | "actualCompletion">>) {

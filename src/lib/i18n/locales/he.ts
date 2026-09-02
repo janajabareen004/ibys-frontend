@@ -606,6 +606,10 @@ const he: Dictionary = {
       lastActive: "פעילות אחרונה",
       availabilityStates: { available: "זמין", busy: "עסוק", off: "לא זמין" },
       empty: "אין חברי צוות התואמים לסינון.",
+      editStatus: "עריכת סטטוס",
+      changeStatus: "שינוי סטטוס",
+      statusUpdated: "הסטטוס עודכן.",
+      statusUpdateFailed: "עדכון הסטטוס נכשל. נסה שוב.",
     },
     activity: {
       title: "יומן פעילות",
@@ -1022,6 +1026,12 @@ const he: Dictionary = {
       email: "אימייל",
       phone: "טלפון",
       project: "פרויקט",
+      editStatus: "עריכת סטטוס",
+      changeStatus: "שינוי סטטוס",
+      statusAvailable: "זמין",
+      statusBusy: "עסוק",
+      statusUpdated: "הסטטוס עודכן.",
+      statusUpdateFailed: "עדכון הסטטוס נכשל. נסה שוב.",
     },
     activity: {
       title: "יומן פעילות",

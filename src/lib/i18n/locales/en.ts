@@ -611,6 +611,10 @@ const en = {
       lastActive: "Last active",
       availabilityStates: { available: "Available", busy: "Busy", off: "Off" },
       empty: "No team members match your filters.",
+      editStatus: "Edit status",
+      changeStatus: "Change status",
+      statusUpdated: "Status updated.",
+      statusUpdateFailed: "Failed to update status. Please try again.",
     },
     activity: {
       title: "Activity log",
@@ -1029,6 +1033,12 @@ const en = {
       email: "Email",
       phone: "Phone",
       project: "Project",
+      editStatus: "Edit status",
+      changeStatus: "Change status",
+      statusAvailable: "Available",
+      statusBusy: "Busy",
+      statusUpdated: "Status updated.",
+      statusUpdateFailed: "Failed to update status. Please try again.",
     },
     activity: {
       title: "Activity log",

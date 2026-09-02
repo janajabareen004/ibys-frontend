@@ -1607,6 +1607,20 @@ async function createCompanyTeamMember(input: {
   return mapCompanyEmployee(row, 0);
 }
 
+/**
+ * Updates a team member's availability via the existing PATCH /api/team/<id>
+ * route (routes/team.py — no new endpoint needed). Ownership/authorization
+ * is enforced server-side there (require_roles("MANAGER","BUILDING_COMPANY")
+ * + project_write_access_error against the member's real project_id); this
+ * call does not duplicate that check client-side.
+ */
+async function updateCompanyEmployeeAvailability(
+  id: string,
+  availability: CompanyEmployee["availability"],
+): Promise<void> {
+  await apiClient.patch(`/team/${id}`, { availability: toCompanyBackendAvailability(availability) });
+}
+
 // ---------------------------------------------------------------------------
 // Real backend: activity log (company-scoped)
 //
@@ -1897,6 +1911,10 @@ export const companyMutations = {
   // team
   createTeamMember: (input: Parameters<typeof mockCompanyService.addEmployee>[0]) =>
     USE_MOCK_API ? mockCompanyService.addEmployee(input) : createCompanyTeamMember(input),
+  updateEmployeeAvailability: (id: string, availability: CompanyEmployee["availability"]) =>
+    USE_MOCK_API
+      ? mockCompanyService.updateEmployeeAvailability(id, availability)
+      : updateCompanyEmployeeAvailability(id, availability),
 
   // stages
   updateStage: (id: string, patch: Partial<CompanyStage>) =>

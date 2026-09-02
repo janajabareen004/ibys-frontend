@@ -5,12 +5,21 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 import { useCompanyEmployees, useCompanyProjects } from "@/hooks/useCompanyData";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SectionCard } from "@/components/manager/SectionCard";
 import { InlineLoader } from "@/components/tenant/InlineLoader";
 import { EmptyState } from "@/components/feedback/EmptyState";
-import { Search, Mail, Phone } from "lucide-react";
+import { CompanyTeamMemberDialog } from "@/components/company/dialogs/CompanyTeamMemberDialog";
+import { notifyError, notifySuccess } from "@/components/feedback/SuccessNotification";
+import { companyMutations } from "@/api/companyApi";
+import { Search, Mail, Phone, Plus } from "lucide-react";
 import type { CompanyEmployee } from "@/mocks/mockCompanyService";
 
 export const Route = createFileRoute("/_authenticated/company/team")({
@@ -25,9 +34,11 @@ export const Route = createFileRoute("/_authenticated/company/team")({
 
 function Page() {
   const { t, formatDate } = useI18n();
-  const { data, loading } = useCompanyEmployees();
+  const { data, loading, refetch } = useCompanyEmployees();
   const { data: projects } = useCompanyProjects();
   const [q, setQ] = React.useState("");
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [updatingId, setUpdatingId] = React.useState<string | null>(null);
   const list = (data ?? []).filter((e) => (q ? [e.name, e.role, e.email].join(" ").toLowerCase().includes(q.toLowerCase()) : true));
   const projectName = (id: string) => projects?.find((p) => p.id === id)?.name ?? id;
   const availStyle: Record<CompanyEmployee["availability"], string> = {
@@ -36,9 +47,35 @@ function Page() {
     off: "border-border bg-muted text-muted-foreground",
   };
 
+  // The Edit Status control only offers Available/Busy; "Busy" maps to this
+  // page's existing "on_site" availability value (which the real backend
+  // stores as "busy" — see toCompanyBackendAvailability in companyApi.ts).
+  const handleAvailabilityChange = async (id: string, availability: CompanyEmployee["availability"]) => {
+    if (updatingId) return;
+    setUpdatingId(id);
+    try {
+      await companyMutations.updateEmployeeAvailability(id, availability);
+      notifySuccess(t("company.team.statusUpdated") as string);
+      await refetch();
+    } catch {
+      notifyError(t("company.team.statusUpdateFailed") as string);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <RoleGuard allow="BUILDING_COMPANY">
-      <PageHeader title={t("company.team.title")} description={t("company.team.description")} />
+      <PageHeader
+        title={t("company.team.title")}
+        description={t("company.team.description")}
+        actions={
+          <Button size="sm" onClick={() => setAddOpen(true)} disabled={(projects ?? []).length === 0}>
+            <Plus className="h-4 w-4" />
+            {t("company.team.addMember")}
+          </Button>
+        }
+      />
       <div className="mb-4 relative">
         <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto h-4 w-4 text-muted-foreground" aria-hidden />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("company.team.search")} className="ps-9" />
@@ -50,16 +87,32 @@ function Page() {
               key={e.id}
               title={e.name}
               description={e.role}
-              action={<Badge variant="outline" className={`rounded-full text-[10px] ${availStyle[e.availability]}`}>{t(`company.team.states.${e.availability}`)}</Badge>}
+              action={
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant="outline" className={`rounded-full text-[10px] ${availStyle[e.availability]}`}>{t(`company.team.states.${e.availability}`)}</Badge>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={updatingId === e.id}
+                        className="text-[10px] font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {t("company.team.editStatus")}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => handleAvailabilityChange(e.id, "available")}>
+                        {t("company.team.statusAvailable")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => handleAvailabilityChange(e.id, "on_site")}>
+                        {t("company.team.statusBusy")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              }
             >
               <div className="space-y-3 text-sm">
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{t("company.team.workload")}</span>
-                    <span className="font-semibold text-foreground">{e.workload}%</span>
-                  </div>
-                  <Progress value={e.workload} className="h-1.5" />
-                </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t("company.team.projects")}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
@@ -79,6 +132,12 @@ function Page() {
           ))}
         </div>
       )}
+      <CompanyTeamMemberDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        projects={projects ?? []}
+        onSaved={refetch}
+      />
     </RoleGuard>
   );
 }
